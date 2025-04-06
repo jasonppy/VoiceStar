@@ -1,7 +1,7 @@
 # VoiceStar: Robust, Duration-controllable TTS that can Extrapolate
 
 ## TODO
-- [ ] Gradio demo ETA: 6 April 2025
+- [x] Gradio demo ETA: 6 April 2025
 - [ ] Research Paper: 7 April 2025 - 14 April 2025
 
 ## 1. Env setup
@@ -24,6 +24,7 @@ pip install torchmetrics
 pip install einops
 pip install omegaconf==2.3.0
 pip install openai-whisper
+pip install gradio
 ```
 
 * avoid warnings likes
@@ -58,6 +59,7 @@ pip install soundfile
 check signature of `run_inference` func in `inference_commandline.py` for adjustable hyperparameters
 ```bash
 # under root dir
+conda activate voicestar
 python inference_commandline.py \
   --reference_speech "./demo/5895_34622_000026_000002.wav" \
   --target_text "I cannot believe that the same model can also do text to speech synthesis too! And you know what? this audio is 8 seconds long." \
@@ -65,6 +67,11 @@ python inference_commandline.py \
 ```
 
 ### Gradio
+```bash
+conda activate voicestar
+python inference_gradio.py
+```
+
 
 ## License
 Code license: MIT

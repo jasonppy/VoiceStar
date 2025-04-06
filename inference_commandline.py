@@ -55,7 +55,7 @@ def run_inference(
     # Default hyperparameters from snippet
     codec_audio_sr=16000, # do not change
     codec_sr=50, # do not change
-    top_k=20, # try 10, 20, 30, 40
+    top_k=10, # try 10, 20, 30, 40
     top_p=1, # do not change
     min_p=1, # do not change
     temperature=1,
