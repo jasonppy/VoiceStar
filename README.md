@@ -1,5 +1,9 @@
 # VoiceStar: Robust, Duration-controllable TTS that can Extrapolate
 
+## TODO
+- [ ] Gradio demo ETA: 6 April 2025
+- [ ] Research Paper: 7 April 2025 - 14 April 2025
+
 ## 1. Env setup
 ### Download model
 ```bash
@@ -50,12 +54,6 @@ pip install soundfile
 ```
 
 ## 2. example 
-### download pretrained models
-```bash
-
-```
-
-
 ### command line example
 check signature of `run_inference` func in `inference_commandline.py` for adjustable hyperparameters
 ```bash
@@ -67,3 +65,8 @@ python inference_commandline.py \
 ```
 
 ### Gradio
+
+## License
+Code license: MIT
+
+Model Weights License: CC-BY-4.0 (as Emilia dataset we used is under this license)
