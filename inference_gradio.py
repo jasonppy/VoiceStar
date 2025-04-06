@@ -62,7 +62,7 @@ def run_inference(
     # User-adjustable parameters (no "# do not change" in snippet)
     reference_speech="./demo/5895_34622_000026_000002.wav",
     target_text="VoiceStar is a very interesting model, it's duration controllable and can extrapolate",
-    model_name="VoiceStar_840M_30s",
+    model_name="VoiceStar_840M_40s",
     model_root="./pretrained",
     reference_text=None,    # optional
     target_duration=None,   # optional
@@ -240,7 +240,7 @@ def main():
 
         model_name_box = gr.Textbox(
             label="Model Name",
-            value="VoiceStar_840M_30s"
+            value="VoiceStar_840M_40s"
         )
 
         model_root_box = gr.Textbox(
