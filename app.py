@@ -40,7 +40,7 @@ def generate_audio(
     texts = txtsplit(text)
 
     audios = []
-    for t in progress.tqdm(texts):
+    for t in progress.tqdm(texts, desc=f"Generating audio in {len(texts)} chunks"):
         audio = model.generate(
             reference_speech=reference_speech, text=t, target_duration=target_duration
         )
