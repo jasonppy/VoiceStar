@@ -8,7 +8,7 @@ import logging, datetime
 import torch.distributed as dist
 from config import MyParser
 from steps import trainer
-from copy_codebase import copy_codebase
+from voicestar.scripts.copy_codebase import copy_codebase
 
 
 def world_info_from_env():

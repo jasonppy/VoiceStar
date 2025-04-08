@@ -26,7 +26,7 @@ import logging
 
 # from data import librilight, gigaspeech, gigaspeech_waveform
 from data import combined_dataset
-from voicestar import voicestar as voice_star # legacy compatability TODO: change
+from voicestar import voicestar as voice_star  # legacy compatability TODO: change
 
 from .trainer_utils import (
     DistributedDynamicBatchSampler,

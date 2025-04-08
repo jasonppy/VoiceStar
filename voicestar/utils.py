@@ -6,20 +6,23 @@ License: MIT
 
 Copyright (c) 2025 Puyuan Peng
 """
+
 import os
 import random
 import numpy as np
 import torch
 import torchaudio
 
+
 def seed_everything(seed=1):
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
+
 
 def estimate_duration(ref_audio_path, text):
     """

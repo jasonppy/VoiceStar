@@ -1748,8 +1748,14 @@ def get_encodec_autoencoder(encoder_name: str, cfg: omegaconf.DictConfig):
 def get_compression_model(ckpt_fn, encode_only=False, device="cpu") -> CompressionModel:
     """Instantiate a compression model."""
     if device == None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-    state = torch.load(ckpt_fn, map_location="cpu", weights_only=False) # TODO: Convert to SafeTensors
+        device = torch.device(
+            "cuda"
+            if torch.cuda.is_available()
+            else "mps" if torch.backends.mps.is_available() else "cpu"
+        )
+    state = torch.load(
+        ckpt_fn, map_location="cpu", weights_only=False
+    )  # TODO: Convert to SafeTensors
     cfg = state["xp.cfg"]
     cfg.device = str(device)
     weights = state["best_state"]["model"]
@@ -1826,7 +1832,11 @@ if __name__ == "__main__":
         "/home/pyp/BoostedVoiceEditor/demo/bible_encodecTest.wav",
         "/home/pyp/BoostedVoiceEditor/demo/miley_encodecTest.wav",
     ]
-    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available() else "cpu"
+    )
     model = get_compression_model(ckpt_fn, device=device)
 
     for audio_in_fn, audio_out_fn in zip(audio_in_fns, audio_out_fns):

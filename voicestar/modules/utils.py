@@ -9,6 +9,7 @@ Copyright (c) 2025 Puyuan Peng
 
 import torch
 
+
 def make_pad_mask(lengths: torch.Tensor, max_len: int = 0) -> torch.Tensor:
     """
     Args:

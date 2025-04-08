@@ -25,7 +25,8 @@ setup(
         "transformers[torch]",
         "huggingface_hub",
         "gradio",
-        "click"
+        "click",
+        "txtsplit",
     ],
     extras_require={
         "train": [
@@ -36,12 +37,8 @@ setup(
             "matplotlib",
             "ffmpeg-python",
             "scipy",
-            "soundfile"
+            "soundfile",
         ]
     },
-    entry_points={
-        "console_scripts": [
-            "voicestar=voicestar.cli:run_inference"
-        ]
-    }
+    entry_points={"console_scripts": ["voicestar=voicestar.cli:run_inference"]},
 )

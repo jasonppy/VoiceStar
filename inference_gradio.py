@@ -26,7 +26,7 @@ from huggingface_hub import hf_hub_download
 # Adjust if needed.
 # ---------------------------------------------------------------------
 from data.tokenizer import AudioTokenizer, TextTokenizer
-from voicestar import voicestar as voice_star # legacy compatability TODO: change
+from voicestar import voicestar as voice_star  # legacy compatability TODO: change
 from inference_tts_utils import inference_one_sample
 
 
@@ -36,7 +36,6 @@ from inference_tts_utils import inference_one_sample
 
 
 from voicestar.utils import seed_everything, estimate_duration
-
 
 
 ############################################################
@@ -77,7 +76,11 @@ def run_inference(
 
     # 2. Load model checkpoint
     torch.serialization.add_safe_globals([Namespace])
-    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu" # MPS support
+    device = (
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available() else "cpu"
+    )  # MPS support
     ckpt_fn = hf_hub_download(repo_id="pyp1/VoiceStar", filename=f"{model_name}.pth")
 
     bundle = torch.load(ckpt_fn, map_location=device, weights_only=True)
