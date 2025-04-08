@@ -6,8 +6,10 @@ import tqdm
 from multiprocessing import Pool
 import glob, os, fire
 from collections import defaultdict
+
 sys.path.insert(0, "../../")
 from data.tokenizer import TextTokenizer, tokenize_text
+
 
 def write_jsonl(data, fn):
     with open(fn, "w") as file:
@@ -17,7 +19,7 @@ def write_jsonl(data, fn):
 
 def read_jsonl(file_path):
     cur_data = []
-    with open(file_path, 'r', encoding='utf-8-sig') as file:
+    with open(file_path, "r", encoding="utf-8-sig") as file:
         for line in file:
             cur_data.append(json.loads(line.strip()))
     return cur_data
@@ -32,9 +34,21 @@ def phonemize_and_save(text, fn, text_tokenizer):
     return set(phn)
 
 
-def process_item(item, root, sub_root, audio_folder, phn_folder, audio_ext, text_ext, phn_ext, text_tokenizer):
+def process_item(
+    item,
+    root,
+    sub_root,
+    audio_folder,
+    phn_folder,
+    audio_ext,
+    text_ext,
+    phn_ext,
+    text_tokenizer,
+):
     """Worker function to process a single item."""
-    text_path = os.path.join(root, sub_root, audio_folder, item[0].replace(audio_ext, text_ext))
+    text_path = os.path.join(
+        root, sub_root, audio_folder, item[0].replace(audio_ext, text_ext)
+    )
     if not os.path.exists(text_path):
         return {"missing_text": text_path, "success": False, "cur_phn_set": set()}
 
@@ -42,7 +56,9 @@ def process_item(item, root, sub_root, audio_folder, phn_folder, audio_ext, text
         text = [line.strip() for line in f.readlines()]
         text = " ".join(text)
 
-    phn_path = os.path.join(root, sub_root, phn_folder, item[0].replace(audio_ext, phn_ext))
+    phn_path = os.path.join(
+        root, sub_root, phn_folder, item[0].replace(audio_ext, phn_ext)
+    )
     cur_phn_set = phonemize_and_save(text, phn_path, text_tokenizer)
     return {"missing_text": None, "success": True, "cur_phn_set": cur_phn_set}
 
@@ -50,6 +66,7 @@ def process_item(item, root, sub_root, audio_folder, phn_folder, audio_ext, text
 def process_item_star(args):
     """Unpacks arguments for `process_item` to work with `imap`."""
     return process_item(*args)
+
 
 def main(
     root="/data/scratch/pyp/datasets/emilia",
@@ -73,7 +90,7 @@ def main(
     for fn in all_fns:
         with open(fn, "r") as f:
             data += [line.strip().split("\t") for line in f]
-    
+
     vocab = set()
 
     ################## parallel processing ##################
@@ -118,7 +135,9 @@ def main(
     ################## sequential processing ##################
     missing_text = []
     for item in tqdm.tqdm(data):
-        text_path = os.path.join(root, sub_root, audio_folder, item[0].replace(audio_ext, text_ext))
+        text_path = os.path.join(
+            root, sub_root, audio_folder, item[0].replace(audio_ext, text_ext)
+        )
         if not os.path.exists(text_path):
             missing_text.append(text_path)
             continue
@@ -129,7 +148,13 @@ def main(
         except:
             print(f"Error reading {text_path}")
             continue
-        cur_phn_set = phonemize_and_save(text, os.path.join(root, sub_root, phn_folder, item[0].replace(audio_ext, phn_ext)), text_tokenizer)
+        cur_phn_set = phonemize_and_save(
+            text,
+            os.path.join(
+                root, sub_root, phn_folder, item[0].replace(audio_ext, phn_ext)
+            ),
+            text_tokenizer,
+        )
         vocab.update(cur_phn_set)
     ################## sequential processing ##################
     ################## sequential processing ##################
@@ -145,14 +170,10 @@ def main(
     # Collect missing text paths
     print(f"Missing text files: {len(missing_text)}")
     if missing_text:
-        print("Some missing files:", missing_text[:10])  # Print the first 10 missing files as an example
-    
+        print(
+            "Some missing files:", missing_text[:10]
+        )  # Print the first 10 missing files as an example
+
 
 if __name__ == "__main__":
     fire.Fire(main)
-
-
-    
-
-
-

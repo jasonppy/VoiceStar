@@ -1,3 +1,12 @@
+"""
+VoiceStar: Robust, Duration-Controllable TTS that can Extrapolate
+
+GitHub: https://github.com/jasonppy/VoiceStar
+License: MIT
+
+Copyright (c) 2025 Puyuan Peng
+"""
+
 import copy, logging
 import numbers
 from functools import partial
@@ -242,13 +251,9 @@ class TransformerEncoderLayer(nn.Module):
 
         norm1 = layer_norm_cls(d_model, eps=layer_norm_eps, **factory_kwargs)
         if layer_norm_cls == IdentityNorm:
-            norm2 = BalancedBasicNorm(
-                d_model, eps=layer_norm_eps, **factory_kwargs
-            )
+            norm2 = BalancedBasicNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
         else:
-            norm2 = layer_norm_cls(
-                d_model, eps=layer_norm_eps, **factory_kwargs
-            )
+            norm2 = layer_norm_cls(d_model, eps=layer_norm_eps, **factory_kwargs)
 
         if adaptive_layer_norm:
             self.norm1 = AdaptiveLayerNorm(d_model, norm1)
@@ -292,7 +297,7 @@ class TransformerEncoderLayer(nn.Module):
         if isinstance(src, tuple):
             x, stage_embedding = src
             is_src_tuple = True
-        
+
         if src_key_padding_mask is not None:
             _skpm_dtype = src_key_padding_mask.dtype
             if _skpm_dtype != torch.bool and not torch.is_floating_point(
@@ -308,41 +313,52 @@ class TransformerEncoderLayer(nn.Module):
                     self.norm1(x, stage_embedding),
                     src_mask,
                     src_key_padding_mask,
-                    past, sinu = sinu
+                    past,
+                    sinu=sinu,
                 )
-                out, present = out # present is the kvcache of the present timestep
+                out, present = out  # present is the kvcache of the present timestep
                 x = x + out
                 x = x + self._ff_block(self.norm2(x, stage_embedding))
             else:
-                out, attn = self._sa_block_attn(x, src_mask, src_key_padding_mask, past, sinu = sinu)
-                out, present = out # present is the kvcache of the present timestep
+                out, attn = self._sa_block_attn(
+                    x, src_mask, src_key_padding_mask, past, sinu=sinu
+                )
+                out, present = out  # present is the kvcache of the present timestep
                 x = self.norm1(
                     x + out,
                     stage_embedding,
                 )
                 x = self.norm2(x + self._ff_block(x), stage_embedding)
             assert not is_src_tuple
-                # return (x, stage_embedding)
+            # return (x, stage_embedding)
             return (x, attn)
         else:
             if self.norm_first:
                 out = self._sa_block(
                     self.norm1(x, stage_embedding),
                     src_mask,
-                    src_key_padding_mask, past, sinu = sinu, q_sinu=pm_sinu['q'], k_sinu=pm_sinu['q']
+                    src_key_padding_mask,
+                    past,
+                    sinu=sinu,
+                    q_sinu=pm_sinu["q"],
+                    k_sinu=pm_sinu["q"],
                 )
-                out, present = out # present is the kvcache of the present timestep
+                out, present = out  # present is the kvcache of the present timestep
                 x = x + out
                 x = x + self._ff_block(self.norm2(x, stage_embedding))
             else:
-                out = self._sa_block(x, src_mask, src_key_padding_mask, sinu = sinu, q_sinu=pm_sinu['q'], k_sinu=pm_sinu['q'])
-                out, present = out # present is the kvcache of the present timestep
-                x = self.norm1(
-                    x + out,
-                    stage_embedding, past
+                out = self._sa_block(
+                    x,
+                    src_mask,
+                    src_key_padding_mask,
+                    sinu=sinu,
+                    q_sinu=pm_sinu["q"],
+                    k_sinu=pm_sinu["q"],
                 )
+                out, present = out  # present is the kvcache of the present timestep
+                x = self.norm1(x + out, stage_embedding, past)
                 x = self.norm2(x + self._ff_block(x), stage_embedding)
-            
+
             if is_src_tuple:
                 x = (x, stage_embedding)
             if present != None:
@@ -356,9 +372,9 @@ class TransformerEncoderLayer(nn.Module):
         attn_mask: Optional[Tensor],
         key_padding_mask: Optional[Tensor],
         past: Optional[Tensor] = None,
-        sinu = None,
-        q_sinu = None,
-        k_sinu = None
+        sinu=None,
+        q_sinu=None,
+        k_sinu=None,
     ) -> Tensor:
         x = self.self_attn(
             x,
@@ -368,9 +384,9 @@ class TransformerEncoderLayer(nn.Module):
             key_padding_mask=key_padding_mask,
             need_weights=False,
             past=past,
-            sinu = sinu,
-            q_sinu = q_sinu,
-            k_sinu = k_sinu
+            sinu=sinu,
+            q_sinu=q_sinu,
+            k_sinu=k_sinu,
         )
         x, present = x
         return self.dropout1(x), present
@@ -390,7 +406,7 @@ class TransformerEncoderLayer(nn.Module):
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask,
             need_weights=True,
-            past=past
+            past=past,
         )
         x, present = x
         return (self.dropout1(x), present), attn
@@ -400,21 +416,36 @@ class TransformerEncoderLayer(nn.Module):
         x = self.linear2(self.dropout(self.activation(self.linear1(x))))
         return self.dropout2(x)
 
-def pre_compute_sinusoidal(dim, base, max_len = 10000): # 4000 max length equivalent of mimi code is 320s, as mimi is 12.5hz
-    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).float() / dim))
-    position_ids_expanded = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1) # [x_len_max, 1]
-    inv_freq_expanded = inv_freq.unsqueeze(0).float() # [1, d//2]
-    freqs = position_ids_expanded @ inv_freq_expanded # [x_len_max, d//2]
-    freqs = torch.cat((freqs, freqs), dim=-1).unsqueeze(0) # [1, x_len_max, d]
+
+def pre_compute_sinusoidal(
+    dim, base, max_len=10000
+):  # 4000 max length equivalent of mimi code is 320s, as mimi is 12.5hz
+    inv_freq = 1.0 / (
+        base ** (torch.arange(0, dim, 2, dtype=torch.int64).float() / dim)
+    )
+    position_ids_expanded = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(
+        1
+    )  # [x_len_max, 1]
+    inv_freq_expanded = inv_freq.unsqueeze(0).float()  # [1, d//2]
+    freqs = position_ids_expanded @ inv_freq_expanded  # [x_len_max, d//2]
+    freqs = torch.cat((freqs, freqs), dim=-1).unsqueeze(0)  # [1, x_len_max, d]
     return {"sin": freqs.sin(), "cos": freqs.cos()}
 
-def pre_compute_freqs(dim, base, max_len = 10000): # 4000 max length equivalent of mimi code is 320s, as mimi is 12.5hz
-    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).float() / dim))
-    position_ids_expanded = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1) # [x_len_max, 1]
-    inv_freq_expanded = inv_freq.unsqueeze(0).float() # [1, d//2]
-    freqs = position_ids_expanded @ inv_freq_expanded # [x_len_max, d//2]
-    freqs = torch.cat((freqs, freqs), dim=-1).unsqueeze(0) # [1, x_len_max, d]
+
+def pre_compute_freqs(
+    dim, base, max_len=10000
+):  # 4000 max length equivalent of mimi code is 320s, as mimi is 12.5hz
+    inv_freq = 1.0 / (
+        base ** (torch.arange(0, dim, 2, dtype=torch.int64).float() / dim)
+    )
+    position_ids_expanded = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(
+        1
+    )  # [x_len_max, 1]
+    inv_freq_expanded = inv_freq.unsqueeze(0).float()  # [1, d//2]
+    freqs = position_ids_expanded @ inv_freq_expanded  # [x_len_max, d//2]
+    freqs = torch.cat((freqs, freqs), dim=-1).unsqueeze(0)  # [1, x_len_max, d]
     return freqs
+
 
 class TransformerEncoder(nn.Module):
     r"""TransformerEncoder is a stack of N encoder layers. Users can build the
@@ -434,9 +465,19 @@ class TransformerEncoder(nn.Module):
         >>> src = torch.rand(10, 32, 512)
         >>> out = transformer_encoder(src)
     """
+
     __constants__ = ["norm"]
 
-    def __init__(self, encoder_layer, num_layers, norm=None, rope_base=None, d_model=None, nhead=None, args=None):
+    def __init__(
+        self,
+        encoder_layer,
+        num_layers,
+        norm=None,
+        rope_base=None,
+        d_model=None,
+        nhead=None,
+        args=None,
+    ):
         super(TransformerEncoder, self).__init__()
         self.layers = _get_clones(encoder_layer, num_layers)
         self.num_layers = num_layers
@@ -450,10 +491,10 @@ class TransformerEncoder(nn.Module):
 
         if rope_base is not None:
             if self.progress_no_multiple:
-                self.pm_freqs = pre_compute_freqs(d_model//nhead, rope_base)
+                self.pm_freqs = pre_compute_freqs(d_model // nhead, rope_base)
                 self.sinu = None
             else:
-                self.sinu = pre_compute_sinusoidal(d_model/nhead, rope_base)
+                self.sinu = pre_compute_sinusoidal(d_model / nhead, rope_base)
                 self.pm_freqs = None
             # logging.info(f"get precomputed sinusoidal for {rope_base=}: {self.sinu=}")
         else:
@@ -466,7 +507,7 @@ class TransformerEncoder(nn.Module):
         mask: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
         return_layer_states: bool = False,
-        need_weights:Optional[bool] = False,
+        need_weights: Optional[bool] = False,
         past: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Pass the input through the encoder layers in turn.
@@ -490,7 +531,7 @@ class TransformerEncoder(nn.Module):
                     output,
                     src_mask=mask,
                     src_key_padding_mask=src_key_padding_mask,
-                    past=past
+                    past=past,
                 )
                 layer_states.append(output[0])
 
@@ -509,7 +550,7 @@ class TransformerEncoder(nn.Module):
                     src_mask=mask,
                     src_key_padding_mask=src_key_padding_mask,
                     need_weights=True,
-                    past=past
+                    past=past,
                 )
                 layer_attn.append(output[1])
 
@@ -517,7 +558,7 @@ class TransformerEncoder(nn.Module):
                 output = self.norm(output)
 
             return layer_attn, output
-        
+
         output = src
         all_present = []
         if self.sinu is not None:
@@ -531,13 +572,15 @@ class TransformerEncoder(nn.Module):
             if src_key_padding_mask != None:
                 query_lens = (~src_key_padding_mask).int().sum(-1).to(output.device)
             else:
-                query_lens = torch.tensor([output.shape[1]]*output.shape[0]).to(output.device)
-            assert query_lens.ndim==1, query_lens
-            q_lens_expanded = query_lens.unsqueeze(-1).unsqueeze(-1) # [B, 1, 1]
+                query_lens = torch.tensor([output.shape[1]] * output.shape[0]).to(
+                    output.device
+                )
+            assert query_lens.ndim == 1, query_lens
+            q_lens_expanded = query_lens.unsqueeze(-1).unsqueeze(-1)  # [B, 1, 1]
             query_ids_multiple = q_lens_expanded / (q_lens_expanded - 1)
-            q_emb = self.pm_freqs * query_ids_multiple # [B, q_len_max, d]
+            q_emb = self.pm_freqs * query_ids_multiple  # [B, q_len_max, d]
             q_emb = q_emb / q_lens_expanded * self.progress_scale
-            q_cos = q_emb.cos().unsqueeze(1) # [B, 1, q_len_max, d] # 1 is for nhead
+            q_cos = q_emb.cos().unsqueeze(1)  # [B, 1, q_len_max, d] # 1 is for nhead
             q_sin = q_emb.sin().unsqueeze(1)
             self.pm_sinu = {"q": {"cos": q_cos, "sin": q_sin}}
         else:
@@ -546,7 +589,10 @@ class TransformerEncoder(nn.Module):
         output = {"input": output, "sinu": self.sinu, "pm_sinu": self.pm_sinu}
         for n_layer, mod in enumerate(self.layers):
             output = mod(
-                output, src_mask=mask, src_key_padding_mask=src_key_padding_mask, past=None if past is None else past[n_layer]
+                output,
+                src_mask=mask,
+                src_key_padding_mask=src_key_padding_mask,
+                past=None if past is None else past[n_layer],
             )
             if isinstance(output, list):
                 output, present = output
@@ -558,7 +604,9 @@ class TransformerEncoder(nn.Module):
         if self.norm is not None:
             output = self.norm(output)
         if all_present != []:
-            all_present = torch.stack(all_present, dim=0) # (num_layers, 2, batch_size, num_heads, seq_len, head_dim)
+            all_present = torch.stack(
+                all_present, dim=0
+            )  # (num_layers, 2, batch_size, num_heads, seq_len, head_dim)
             output = [output, all_present]
         return output
 
@@ -630,26 +678,16 @@ class TransformerDecoderLayer(nn.Module):
             self.activation = activation
 
         if adaptive_layer_norm:
-            norm1 = layer_norm_cls(
-                d_model, eps=layer_norm_eps, **factory_kwargs
-            )
-            norm2 = layer_norm_cls(
-                d_model, eps=layer_norm_eps, **factory_kwargs
-            )
-            norm3 = layer_norm_cls(
-                d_model, eps=layer_norm_eps, **factory_kwargs
-            )
+            norm1 = layer_norm_cls(d_model, eps=layer_norm_eps, **factory_kwargs)
+            norm2 = layer_norm_cls(d_model, eps=layer_norm_eps, **factory_kwargs)
+            norm3 = layer_norm_cls(d_model, eps=layer_norm_eps, **factory_kwargs)
 
             self.norm1 = AdaptiveLayerNorm(d_model, norm1)
             self.norm2 = AdaptiveLayerNorm(d_model, norm2)
             self.norm3 = AdaptiveLayerNorm(d_model, norm3)
         else:
-            self.norm1 = layer_norm_cls(
-                d_model, eps=layer_norm_eps, **factory_kwargs
-            )
-            self.norm2 = layer_norm_cls(
-                d_model, eps=layer_norm_eps, **factory_kwargs
-            )
+            self.norm1 = layer_norm_cls(d_model, eps=layer_norm_eps, **factory_kwargs)
+            self.norm2 = layer_norm_cls(d_model, eps=layer_norm_eps, **factory_kwargs)
             if layer_norm_cls == IdentityNorm:
                 self.norm3 = BalancedBasicNorm(
                     d_model, eps=layer_norm_eps, **factory_kwargs
@@ -667,8 +705,12 @@ class TransformerDecoderLayer(nn.Module):
         memory_mask: Optional[Tensor] = None,
         tgt_key_padding_mask: Optional[Tensor] = None,
         memory_key_padding_mask: Optional[Tensor] = None,
-        tgt_is_causal: Optional[bool] = False, # for compatibility with the nn.TransformerDecoder, not used
-        memory_is_causal: Optional[bool] = False, # for compatibility with the nn.TransformerDecoder, not used
+        tgt_is_causal: Optional[
+            bool
+        ] = False,  # for compatibility with the nn.TransformerDecoder, not used
+        memory_is_causal: Optional[
+            bool
+        ] = False,  # for compatibility with the nn.TransformerDecoder, not used
         past: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Pass the inputs (and mask) through the decoder layer.
@@ -706,14 +748,23 @@ class TransformerDecoderLayer(nn.Module):
 
         # past stores the kvcache for self-attention, and it can also be used to infer q_offset
         if past is not None and past.ndim > 2:
-            q_offset = past[0].shape[-2] # past is (2, batch_size, num_heads, seq_len, head_dim), 2 contains [k, v], these are for self-attn, therefore also reflect the length of q
+            q_offset = past[0].shape[
+                -2
+            ]  # past is (2, batch_size, num_heads, seq_len, head_dim), 2 contains [k, v], these are for self-attn, therefore also reflect the length of q
         else:
             q_offset = 0
 
-
         if self.norm_first:
             temp = self._sa_block(
-                self.norm1(x, stage_embedding), tgt_mask, tgt_key_padding_mask, q_sinu=pm_sinu['q'], k_sinu=pm_sinu['q'], sinu=sinu, args = args, past=past, q_offset=q_offset
+                self.norm1(x, stage_embedding),
+                tgt_mask,
+                tgt_key_padding_mask,
+                q_sinu=pm_sinu["q"],
+                k_sinu=pm_sinu["q"],
+                sinu=sinu,
+                args=args,
+                past=past,
+                q_offset=q_offset,
             )
             present = temp[1]
             x = x + temp[0]
@@ -721,7 +772,12 @@ class TransformerDecoderLayer(nn.Module):
                 self.norm2(x, stage_embedding),
                 memory,
                 memory_mask,
-                memory_key_padding_mask, q_sinu=pm_sinu['q'], k_sinu=pm_sinu['k'], sinu=sinu, args = args, q_offset=q_offset
+                memory_key_padding_mask,
+                q_sinu=pm_sinu["q"],
+                k_sinu=pm_sinu["k"],
+                sinu=sinu,
+                args=args,
+                q_offset=q_offset,
             )
             if isinstance(cross_out, dict):
                 attention_weights = cross_out["attention_weights"]
@@ -731,27 +787,44 @@ class TransformerDecoderLayer(nn.Module):
             x = x + cross_out
             x = x + self._ff_block(self.norm3(x, stage_embedding))
         else:
-            temp = self._sa_block(x, tgt_mask, tgt_key_padding_mask, q_sinu=pm_sinu['q'], k_sinu=pm_sinu['q'], sinu=sinu, args = args, past=past, q_offset=q_offset)
+            temp = self._sa_block(
+                x,
+                tgt_mask,
+                tgt_key_padding_mask,
+                q_sinu=pm_sinu["q"],
+                k_sinu=pm_sinu["q"],
+                sinu=sinu,
+                args=args,
+                past=past,
+                q_offset=q_offset,
+            )
             present = temp[1]
             x = self.norm1(
                 x + temp[0],
                 stage_embedding,
             )
             cross_out = self._mha_block(
-                    x, memory, memory_mask, memory_key_padding_mask, q_sinu=pm_sinu['q'], k_sinu=pm_sinu['k'], sinu=sinu, args=args, q_offset=q_offset
-                )
+                x,
+                memory,
+                memory_mask,
+                memory_key_padding_mask,
+                q_sinu=pm_sinu["q"],
+                k_sinu=pm_sinu["k"],
+                sinu=sinu,
+                args=args,
+                q_offset=q_offset,
+            )
             if isinstance(cross_out, dict):
                 attention_weights = cross_out["attention_weights"]
                 cross_out = cross_out["x"]
             else:
-                attention_weights = None 
+                attention_weights = None
             x = self.norm2(
-                x
-                + cross_out,
+                x + cross_out,
                 stage_embedding,
             )
             x = self.norm3(x + self._ff_block(x), stage_embedding)
-        
+
         if attention_weights is not None:
             x = {"x": x, "attention_weights": attention_weights}
         if tgt_is_tuple:
@@ -768,10 +841,10 @@ class TransformerDecoderLayer(nn.Module):
         key_padding_mask: Optional[Tensor],
         q_sinu=None,
         k_sinu=None,
-        sinu = None, 
-        args = None,
-        past = None,
-        q_offset = 0
+        sinu=None,
+        args=None,
+        past=None,
+        q_offset=0,
     ) -> Tensor:
         # if past is not None and past.ndim > 2:
         #     print(f"self-attn, k len: {past[0].shape[-2] + x.shape[-2]}, q len: {x.shape[-2]} q_offset: {q_offset}")
@@ -784,11 +857,11 @@ class TransformerDecoderLayer(nn.Module):
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask,
             need_weights=False,
-            q_sinu = q_sinu,
-            k_sinu = k_sinu,
-            sinu = sinu,
-            past = past,
-            q_offset = q_offset
+            q_sinu=q_sinu,
+            k_sinu=k_sinu,
+            sinu=sinu,
+            past=past,
+            q_offset=q_offset,
         )
         x, present = x
         return self.dropout1(x), present
@@ -800,11 +873,11 @@ class TransformerDecoderLayer(nn.Module):
         mem: Tensor,
         attn_mask: Optional[Tensor],
         key_padding_mask: Optional[Tensor],
-        q_sinu = None,
-        k_sinu = None,
-        sinu = None, 
-        args = None,
-        q_offset = 0
+        q_sinu=None,
+        k_sinu=None,
+        sinu=None,
+        args=None,
+        q_offset=0,
     ) -> Tensor:
         # print(f"cross-attn, k len: {mem.shape[-2]}, q len: {x.shape[-2]} q_offset: {q_offset}")
         x = self.multihead_attn(
@@ -814,16 +887,16 @@ class TransformerDecoderLayer(nn.Module):
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask,
             need_weights=False,
-            q_sinu = q_sinu,
-            k_sinu = k_sinu,
-            sinu = sinu,
-            args = args,
-            q_offset = q_offset
+            q_sinu=q_sinu,
+            k_sinu=k_sinu,
+            sinu=sinu,
+            args=args,
+            q_offset=q_offset,
         )
         if len(x) == 2 and isinstance(x[0], dict) and "attention_weights" in x[0]:
             x, present = x
-            attention_weights = x['attention_weights']
-            x = x['attn_output']
+            attention_weights = x["attention_weights"]
+            x = x["attn_output"]
             return {"x": self.dropout2(x), "attention_weights": attention_weights}
         elif len(x) == 2:
             x = x[0]
@@ -845,30 +918,29 @@ def _get_activation_fn(activation: str) -> Callable[[Tensor], Tensor]:
     elif activation == "gelu":
         return F.gelu
 
-    raise RuntimeError(
-        "activation should be relu/gelu, not {}".format(activation)
-    )
+    raise RuntimeError("activation should be relu/gelu, not {}".format(activation))
+
+
 def _generate_square_subsequent_mask(
-        sz: int,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+    sz: int,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     r"""Generate a square causal mask for the sequence.
 
     The masked positions are filled with float('-inf'). Unmasked positions are filled with float(0.0).
     """
     if device is None:
-        device = torch.device('cpu')
+        device = torch.device("cpu")
     if dtype is None:
         dtype = torch.float32
     return torch.triu(
-        torch.full((sz, sz), float('-inf'), dtype=dtype, device=device),
+        torch.full((sz, sz), float("-inf"), dtype=dtype, device=device),
         diagonal=1,
     )
-def _get_seq_len(
-        src: Tensor,
-        batch_first: bool
-) -> Optional[int]:
+
+
+def _get_seq_len(src: Tensor, batch_first: bool) -> Optional[int]:
 
     if src.is_nested:
         return None
@@ -882,10 +954,11 @@ def _get_seq_len(
             seq_len_pos = 1 if batch_first else 0
             return src_size[seq_len_pos]
 
+
 def _detect_is_causal_mask(
-        mask: Optional[Tensor],
-        is_causal: Optional[bool] = None,
-        size: Optional[int] = None,
+    mask: Optional[Tensor],
+    is_causal: Optional[bool] = None,
+    size: Optional[int] = None,
 ) -> bool:
     """Return whether the given attention mask is causal.
 
@@ -907,12 +980,13 @@ def _detect_is_causal_mask(
        Otherwise, checks for any causal mask.
     """
     # Prevent type refinement
-    make_causal = (is_causal is True)
+    make_causal = is_causal is True
 
     if is_causal is None and mask is not None:
         sz = size if size is not None else mask.size(-2)
         causal_comparison = _generate_square_subsequent_mask(
-            sz, device=mask.device, dtype=mask.dtype)
+            sz, device=mask.device, dtype=mask.dtype
+        )
 
         # Do not use `torch.equal` so we handle batched masks by
         # broadcasting the comparison.
@@ -922,6 +996,7 @@ def _detect_is_causal_mask(
             make_causal = False
 
     return make_causal
+
 
 class TransformerDecoder(nn.Module):
     r"""TransformerDecoder is a stack of N decoder layers.
@@ -939,17 +1014,17 @@ class TransformerDecoder(nn.Module):
         >>> out = transformer_decoder(tgt, memory)
     """
 
-    __constants__ = ['norm']
+    __constants__ = ["norm"]
 
     def __init__(
         self,
         decoder_layer: "TransformerDecoderLayer",
         num_layers: int,
         norm: Optional[nn.Module] = None,
-        rope_base=None, 
-        d_model=None, 
+        rope_base=None,
+        d_model=None,
         nhead=None,
-        args=None
+        args=None,
     ) -> None:
         super().__init__()
         torch._C._log_api_usage_once(f"torch.nn.modules.{self.__class__.__name__}")
@@ -957,22 +1032,32 @@ class TransformerDecoder(nn.Module):
         self.num_layers = num_layers
         self.norm = norm
         self.args = args
-        if getattr(self.args, 'decoder_regular_rope', False):
-            self.sinu = pre_compute_sinusoidal(d_model/nhead, rope_base)
+        if getattr(self.args, "decoder_regular_rope", False):
+            self.sinu = pre_compute_sinusoidal(d_model / nhead, rope_base)
             self.pm_freqs = None
         else:
             self.sinu = None
             if rope_base is not None:
-                self.pm_freqs = pre_compute_freqs(d_model/nhead, rope_base)
+                self.pm_freqs = pre_compute_freqs(d_model / nhead, rope_base)
                 # logging.info(f"get precomputed freqs for {rope_base=}: {self.freqs=}")
             else:
                 self.pm_freqs = None
         self.progress_scale = getattr(self.args, "progress_scale", 1.0)
 
-    def forward(self, tgt: Tensor, memory: Tensor, tgt_mask: Optional[Tensor] = None,
-                memory_mask: Optional[Tensor] = None, tgt_key_padding_mask: Optional[Tensor] = None,
-                memory_key_padding_mask: Optional[Tensor] = None, tgt_is_causal: Optional[bool] = None,
-                memory_is_causal: bool = False, query_lens: Optional[Tensor] = None, key_lens: Optional[Tensor] = None, past: Optional[Tensor] = None) -> Tensor:
+    def forward(
+        self,
+        tgt: Tensor,
+        memory: Tensor,
+        tgt_mask: Optional[Tensor] = None,
+        memory_mask: Optional[Tensor] = None,
+        tgt_key_padding_mask: Optional[Tensor] = None,
+        memory_key_padding_mask: Optional[Tensor] = None,
+        tgt_is_causal: Optional[bool] = None,
+        memory_is_causal: bool = False,
+        query_lens: Optional[Tensor] = None,
+        key_lens: Optional[Tensor] = None,
+        past: Optional[Tensor] = None,
+    ) -> Tensor:
         r"""Pass the inputs (and mask) through the decoder layer in turn.
 
         Args:
@@ -1011,21 +1096,42 @@ class TransformerDecoder(nn.Module):
                 self.sinu[key] = self.sinu[key].to(output.device)
         if self.pm_freqs is not None:
             assert self.sinu is None
-            if not self.training and hasattr(self, "pm_sinu") and past is not None and past[0].ndim > 2: # inference mode, will use cached sinu for the same example
-                assert self.pm_sinu['q'] is not None and self.pm_sinu['k'] is not None
+            if (
+                not self.training
+                and hasattr(self, "pm_sinu")
+                and past is not None
+                and past[0].ndim > 2
+            ):  # inference mode, will use cached sinu for the same example
+                assert self.pm_sinu["q"] is not None and self.pm_sinu["k"] is not None
                 # check batch size, need to modify the batch size if we use multi_trial during inference
-                if self.pm_sinu['q']['cos'].shape[0] != tgt.shape[0]:
-                    if self.pm_sinu['q']['cos'].shape[0] > tgt.shape[0]:
-                        self.pm_sinu['q']['cos'] = self.pm_sinu['q']['cos'][:tgt.shape[0]]
-                        self.pm_sinu['q']['sin'] = self.pm_sinu['q']['sin'][:tgt.shape[0]]
-                        self.pm_sinu['k']['cos'] = self.pm_sinu['k']['cos'][:tgt.shape[0]]
-                        self.pm_sinu['k']['sin'] = self.pm_sinu['k']['sin'][:tgt.shape[0]]
+                if self.pm_sinu["q"]["cos"].shape[0] != tgt.shape[0]:
+                    if self.pm_sinu["q"]["cos"].shape[0] > tgt.shape[0]:
+                        self.pm_sinu["q"]["cos"] = self.pm_sinu["q"]["cos"][
+                            : tgt.shape[0]
+                        ]
+                        self.pm_sinu["q"]["sin"] = self.pm_sinu["q"]["sin"][
+                            : tgt.shape[0]
+                        ]
+                        self.pm_sinu["k"]["cos"] = self.pm_sinu["k"]["cos"][
+                            : tgt.shape[0]
+                        ]
+                        self.pm_sinu["k"]["sin"] = self.pm_sinu["k"]["sin"][
+                            : tgt.shape[0]
+                        ]
                     else:
-                        assert self.pm_sinu['q']['cos'].shape[0] == 1
-                        self.pm_sinu['q']['cos'] = self.pm_sinu['q']['cos'].repeat(tgt.shape[0], 1, 1, 1)
-                        self.pm_sinu['q']['sin'] = self.pm_sinu['q']['sin'].repeat(tgt.shape[0], 1, 1, 1)
-                        self.pm_sinu['k']['cos'] = self.pm_sinu['k']['cos'].repeat(tgt.shape[0], 1, 1, 1)
-                        self.pm_sinu['k']['sin'] = self.pm_sinu['k']['sin'].repeat(tgt.shape[0], 1, 1, 1)
+                        assert self.pm_sinu["q"]["cos"].shape[0] == 1
+                        self.pm_sinu["q"]["cos"] = self.pm_sinu["q"]["cos"].repeat(
+                            tgt.shape[0], 1, 1, 1
+                        )
+                        self.pm_sinu["q"]["sin"] = self.pm_sinu["q"]["sin"].repeat(
+                            tgt.shape[0], 1, 1, 1
+                        )
+                        self.pm_sinu["k"]["cos"] = self.pm_sinu["k"]["cos"].repeat(
+                            tgt.shape[0], 1, 1, 1
+                        )
+                        self.pm_sinu["k"]["sin"] = self.pm_sinu["k"]["sin"].repeat(
+                            tgt.shape[0], 1, 1, 1
+                        )
                 pass
             else:
                 self.pm_freqs = self.pm_freqs.to(output.device)
@@ -1033,38 +1139,51 @@ class TransformerDecoder(nn.Module):
                     query_lens = (~tgt_key_padding_mask).int().sum(-1).to(tgt.device)
                 if key_lens is None:
                     key_lens = (~memory_key_padding_mask).int().sum(-1).to(tgt.device)
-                assert key_lens.ndim==1, key_lens
-                assert query_lens.ndim==1, query_lens
-                q_lens_expanded = query_lens.unsqueeze(-1).unsqueeze(-1) # [B, 1, 1]
-                k_lens_expanded = key_lens.unsqueeze(-1).unsqueeze(-1) # [B, 1, 1]
+                assert key_lens.ndim == 1, key_lens
+                assert query_lens.ndim == 1, query_lens
+                q_lens_expanded = query_lens.unsqueeze(-1).unsqueeze(-1)  # [B, 1, 1]
+                k_lens_expanded = key_lens.unsqueeze(-1).unsqueeze(-1)  # [B, 1, 1]
                 query_ids_multiple = q_lens_expanded / (q_lens_expanded - 1)
                 key_ids_multiple = k_lens_expanded / (k_lens_expanded - 1)
-                q_emb = self.pm_freqs * query_ids_multiple # [B, q_len_max, d]
-                k_emb = self.pm_freqs * key_ids_multiple # [B, k_len_max, d]
+                q_emb = self.pm_freqs * query_ids_multiple  # [B, q_len_max, d]
+                k_emb = self.pm_freqs * key_ids_multiple  # [B, k_len_max, d]
                 q_emb = q_emb / q_lens_expanded * self.progress_scale
                 k_emb = k_emb / k_lens_expanded * self.progress_scale
-                q_cos = q_emb.cos().unsqueeze(1) # [B, 1, q_len_max, d] # 1 is for nhead
+                q_cos = q_emb.cos().unsqueeze(
+                    1
+                )  # [B, 1, q_len_max, d] # 1 is for nhead
                 q_sin = q_emb.sin().unsqueeze(1)
                 k_cos = k_emb.cos().unsqueeze(1)
                 k_sin = k_emb.sin().unsqueeze(1)
-                self.pm_sinu = {"q": {"cos": q_cos, "sin": q_sin}, "k": {"cos": k_cos, "sin": k_sin}}
+                self.pm_sinu = {
+                    "q": {"cos": q_cos, "sin": q_sin},
+                    "k": {"cos": k_cos, "sin": k_sin},
+                }
         else:
             self.pm_sinu = {"q": None, "k": None}
 
-        output = {"input": output, "pm_sinu": self.pm_sinu, "sinu": self.sinu, "args": self.args}
+        output = {
+            "input": output,
+            "pm_sinu": self.pm_sinu,
+            "sinu": self.sinu,
+            "args": self.args,
+        }
         if past != None:
             all_present = []
         if self.training and getattr(self.args, "attention_alignment_loss", 0):
             all_attn_weights = []
         for i, mod in enumerate(self.layers):
-            output = mod(output, memory, tgt_mask=tgt_mask,
-                        memory_mask=memory_mask,
-                        tgt_key_padding_mask=tgt_key_padding_mask,
-                        memory_key_padding_mask=memory_key_padding_mask,
-                        past=past[i] if past != None else None
-                        #  tgt_is_causal=tgt_is_causal,
-                        #  memory_is_causal=memory_is_causal
-                        )
+            output = mod(
+                output,
+                memory,
+                tgt_mask=tgt_mask,
+                memory_mask=memory_mask,
+                tgt_key_padding_mask=tgt_key_padding_mask,
+                memory_key_padding_mask=memory_key_padding_mask,
+                past=past[i] if past != None else None,
+                #  tgt_is_causal=tgt_is_causal,
+                #  memory_is_causal=memory_is_causal
+            )
             if past != None:
                 output, cur_present = output
                 all_present.append(cur_present)
@@ -1073,13 +1192,20 @@ class TransformerDecoder(nn.Module):
                 all_attn_weights.append(current_attn_weights)
                 output = output["x"]
             if self.sinu is not None or self.pm_sinu is not None:
-                output = {"input": output, "pm_sinu": self.pm_sinu, "sinu": self.sinu, "args": self.args}
+                output = {
+                    "input": output,
+                    "pm_sinu": self.pm_sinu,
+                    "sinu": self.sinu,
+                    "args": self.args,
+                }
         if self.pm_sinu is not None or self.sinu is not None:
             output = output["input"]
         if self.norm is not None:
             output = self.norm(output)
         if self.training and getattr(self.args, "attention_alignment_loss", 0):
-            assert len(all_attn_weights) == self.num_layers, f"{len(all_attn_weights)=}, {self.num_layers=}"
+            assert (
+                len(all_attn_weights) == self.num_layers
+            ), f"{len(all_attn_weights)=}, {self.num_layers=}"
             output = {"output": output, "attention_weights": all_attn_weights}
         if past != None:
             all_present = torch.stack(all_present, dim=0)

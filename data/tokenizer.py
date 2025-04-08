@@ -16,10 +16,11 @@
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Pattern, Union
-
+from voicestar.data.encodec import get_compression_model
 import numpy as np
 import torch
 import torchaudio
+
 # from encodec import EncodecModel
 # from encodec.utils import convert_audio
 # from lhotse.features import FeatureExtractor
@@ -63,9 +64,7 @@ class PypinyinBackend:
             phones = []
             if self.backend == "pypinyin":
                 for n, py in enumerate(
-                    pinyin(
-                        _text, style=Style.TONE3, neutral_tone_with_five=True
-                    )
+                    pinyin(_text, style=Style.TONE3, neutral_tone_with_five=True)
                 ):
                     if all([c in self.punctuation_marks for c in py[0]]):
                         if len(phones):
@@ -77,9 +76,7 @@ class PypinyinBackend:
                         phones.extend([py[0], separator.syllable])
             elif self.backend == "pypinyin_initials_finals":
                 for n, py in enumerate(
-                    pinyin(
-                        _text, style=Style.TONE3, neutral_tone_with_five=True
-                    )
+                    pinyin(_text, style=Style.TONE3, neutral_tone_with_five=True)
                 ):
                     if all([c in self.punctuation_marks for c in py[0]]):
                         if len(phones):
@@ -90,10 +87,7 @@ class PypinyinBackend:
                         if py[0][-1].isalnum():
                             initial = get_initials(py[0], strict=False)
                             if py[0][-1].isdigit():
-                                final = (
-                                    get_finals(py[0][:-1], strict=False)
-                                    + py[0][-1]
-                                )
+                                final = get_finals(py[0][:-1], strict=False) + py[0][-1]
                             else:
                                 final = get_finals(py[0], strict=False)
                             phones.extend(
@@ -156,8 +150,7 @@ class TextTokenizer:
             # "ɐ    m|iː|n?"    ɹ|ɪ|z|ɜː|v; h|ɪ|z.
             pp = re.findall(r"\w+|[^\w\s]", word, re.UNICODE)
             fields.extend(
-                [p for p in pp if p != self.separator.phone]
-                + [self.separator.word]
+                [p for p in pp if p != self.separator.phone] + [self.separator.word]
             )
         assert len("".join(fields[:-1])) == len(phonemized) - phonemized.count(
             self.separator.phone
@@ -183,6 +176,7 @@ def remove_encodec_weight_norm(model):
     from encodec.modules import SConv1d
     from encodec.modules.seanet import SConvTranspose1d, SEANetResnetBlock
     from torch.nn.utils import remove_weight_norm
+
     encoder = model.encoder.model
     for key in encoder._modules:
         if isinstance(encoder._modules[key], SEANetResnetBlock):
@@ -212,14 +206,14 @@ class AudioTokenizer:
 
     def __init__(
         self,
-        bandwidth: float=6.0,
+        bandwidth: float = 6.0,
         device: Any = None,
         hificodec=False,
-        signature = None,
-        encode_only = False
+        signature=None,
+        encode_only=False,
     ) -> None:
         self.signature = signature
-        from data.encodec import get_compression_model
+
         model = get_compression_model(signature, encode_only=encode_only, device=device)
         self.sample_rate = model.sample_rate
         self.channels = model.channels
@@ -240,35 +234,44 @@ class AudioTokenizer:
     def encode(self, wav: torch.Tensor) -> torch.Tensor:
         if self.signature != None:
             if self.signature == "lfsc":
-                if wav.ndim==3:
-                    assert wav.shape[:2] == torch.Size((1,1)), wav.shape
+                if wav.ndim == 3:
+                    assert wav.shape[:2] == torch.Size((1, 1)), wav.shape
                     wav = wav.squeeze(0)
-                elif wav.ndim==2:
+                elif wav.ndim == 2:
                     assert wav.shape[0] == 1, wav.shape
                 else:
                     raise ValueError(wav.shape)
                 audio_len = torch.tensor([wav.shape[1]]).to(self.device)
-                codes, encoded_len = self.codec.encode(audio=wav.to(self.device), audio_len=audio_len)
-                return codes[:, :, :encoded_len[0]]
+                codes, encoded_len = self.codec.encode(
+                    audio=wav.to(self.device), audio_len=audio_len
+                )
+                return codes[:, :, : encoded_len[0]]
             else:
                 codes = self.codec.encode(wav.to(self.device))
                 return codes[0]
         else:
-            assert wav.ndim==3 and wav.shape[:2] == torch.Size((1,1)), wav.shape
+            assert wav.ndim == 3 and wav.shape[:2] == torch.Size((1, 1)), wav.shape
             return self.codec.encode(wav.to(self.device))
 
     def decode(self, frames: torch.Tensor) -> torch.Tensor:
         if self.signature != None and self.signature == "lfsc":
             encoded_len = torch.tensor([frames.shape[-1]]).to(self.device)
-            reconstructed_audio, decoded_len = self.codec.decode(tokens=frames, tokens_len=encoded_len)
-            return reconstructed_audio[:, :decoded_len[0]].unsqueeze(0)
+            reconstructed_audio, decoded_len = self.codec.decode(
+                tokens=frames, tokens_len=encoded_len
+            )
+            return reconstructed_audio[:, : decoded_len[0]].unsqueeze(0)
         else:
             return self.codec.decode(frames)
-        
-def tokenize_audio(tokenizer: AudioTokenizer, audio_path: str, offset = -1, num_frames=-1):
+
+
+def tokenize_audio(
+    tokenizer: AudioTokenizer, audio_path: str, offset=-1, num_frames=-1
+):
     # Load and pre-process the audio waveform
-    if offset != -1 and num_frames!=-1:
-        wav, sr = torchaudio.load(audio_path, frame_offset=offset, num_frames=num_frames)
+    if offset != -1 and num_frames != -1:
+        wav, sr = torchaudio.load(
+            audio_path, frame_offset=offset, num_frames=num_frames
+        )
     else:
         wav, sr = torchaudio.load(audio_path)
     if sr != tokenizer.sample_rate:
@@ -285,11 +288,17 @@ def tokenize_audio(tokenizer: AudioTokenizer, audio_path: str, offset = -1, num_
 
 if __name__ == "__main__":
     # tok = AudioTokenizer(signature="lfsc", device="cpu")
-    tok = AudioTokenizer(signature="/home/pyp/BoostedVoiceEditor/pretrained/encodec_6f79c6a8.th", device="cpu")
+    tok = AudioTokenizer(
+        signature="/home/pyp/BoostedVoiceEditor/pretrained/encodec_6f79c6a8.th",
+        device="cpu",
+    )
     inaudio = "/home/pyp/BoostedVoiceEditor/demo/pam.wav"
     encoded_frames = tokenize_audio(tok, inaudio)
     print(encoded_frames.shape)
     # decode it back
     decoded_audio = tok.decode(encoded_frames)
-    torchaudio.save("/home/pyp/BoostedVoiceEditor/demo/pam_reconstructed_encodec_4cb_2nd.wav", decoded_audio[0], tok.sample_rate)
-
+    torchaudio.save(
+        "/home/pyp/BoostedVoiceEditor/demo/pam_reconstructed_encodec_4cb_2nd.wav",
+        decoded_audio[0],
+        tok.sample_rate,
+    )

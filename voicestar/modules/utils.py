@@ -1,3 +1,12 @@
+"""
+VoiceStar: Robust, Duration-Controllable TTS that can Extrapolate
+
+GitHub: https://github.com/jasonppy/VoiceStar
+License: MIT
+
+Copyright (c) 2025 Puyuan Peng
+"""
+
 import torch
 
 
@@ -28,9 +37,12 @@ def make_pad_mask(lengths: torch.Tensor, max_len: int = 0) -> torch.Tensor:
 
     return expaned_lengths >= lengths.unsqueeze(-1)
 
+
 def generate_partial_autoregressive_mask(sz, start, end):
     mask = torch.zeros(sz, sz).bool()
-    mask[start:end, start:end] = torch.triu(torch.ones(end-start, end-start,dtype=torch.bool), diagonal=1)
+    mask[start:end, start:end] = torch.triu(
+        torch.ones(end - start, end - start, dtype=torch.bool), diagonal=1
+    )
     mask[:start, start:end] = True
     mask[end:, start:end] = True
     return mask

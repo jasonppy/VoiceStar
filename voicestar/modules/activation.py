@@ -1,4 +1,4 @@
-# cp from https://github.com/lifeiteng/vall-e/blob/main/valle/modules/activation.py
+# From https://github.com/lifeiteng/vall-e/blob/main/valle/modules/activation.py (Apache 2.0 license)
 from typing import Optional, Tuple
 
 import torch
@@ -11,19 +11,21 @@ from torch.nn.parameter import Parameter
 import logging
 from typing import Callable, List, Optional, Tuple, Union
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from torch.types import _dtype as DType
 else:
     # The JIT doesn't understand Union, nor torch.dtype here
     DType = int
 
+
 def _canonical_mask(
-        mask: Optional[Tensor],
-        mask_name: str,
-        other_type: Optional[DType],
-        other_name: str,
-        target_type: DType,
-        check_other: bool = True,
+    mask: Optional[Tensor],
+    mask_name: str,
+    other_type: Optional[DType],
+    other_name: str,
+    target_type: DType,
+    check_other: bool = True,
 ) -> Optional[Tensor]:
 
     if mask is not None:
@@ -31,7 +33,8 @@ def _canonical_mask(
         _mask_is_float = torch.is_floating_point(mask)
         if _mask_dtype != torch.bool and not _mask_is_float:
             raise AssertionError(
-                f"only bool and floating types of {mask_name} are supported")
+                f"only bool and floating types of {mask_name} are supported"
+            )
         if check_other and other_type is not None:
             if _mask_dtype != other_type:
                 warnings.warn(
@@ -39,11 +42,11 @@ def _canonical_mask(
                     "is deprecated. Use same type for both instead."
                 )
         if not _mask_is_float:
-            mask = (
-                torch.zeros_like(mask, dtype=target_type)
-                .masked_fill_(mask, float("-inf"))
+            mask = torch.zeros_like(mask, dtype=target_type).masked_fill_(
+                mask, float("-inf")
             )
     return mask
+
 
 def _in_projection_packed(
     q: Tensor,
@@ -85,7 +88,13 @@ def _in_projection_packed(
             # self-attention
             proj = F.linear(q, w, b)
             # reshape to 3, E and not E, 3 is deliberate for better memory coalescing and keeping same order as chunk()
-            proj = proj.unflatten(-1, (3, E)).unsqueeze(0).transpose(0, -2).squeeze(-2).contiguous()
+            proj = (
+                proj.unflatten(-1, (3, E))
+                .unsqueeze(0)
+                .transpose(0, -2)
+                .squeeze(-2)
+                .contiguous()
+            )
             return proj[0], proj[1], proj[2]
         else:
             # encoder-decoder attention
@@ -97,7 +106,13 @@ def _in_projection_packed(
             q_proj = F.linear(q, w_q, b_q)
             kv_proj = F.linear(k, w_kv, b_kv)
             # reshape to 2, E and not E, 2 is deliberate for better memory coalescing and keeping same order as chunk()
-            kv_proj = kv_proj.unflatten(-1, (2, E)).unsqueeze(0).transpose(0, -2).squeeze(-2).contiguous()
+            kv_proj = (
+                kv_proj.unflatten(-1, (2, E))
+                .unsqueeze(0)
+                .transpose(0, -2)
+                .squeeze(-2)
+                .contiguous()
+            )
             return (q_proj, kv_proj[0], kv_proj[1])
     else:
         w_q, w_k, w_v = w.chunk(3)
@@ -107,6 +122,7 @@ def _in_projection_packed(
             b_q, b_k, b_v = b.chunk(3)
         return F.linear(q, w_q, b_q), F.linear(k, w_k, b_k), F.linear(v, w_v, b_v)
 
+
 def _none_or_dtype(input: Optional[Tensor]) -> Optional[DType]:
     if input is None:
         return None
@@ -114,19 +130,35 @@ def _none_or_dtype(input: Optional[Tensor]) -> Optional[DType]:
         return input.dtype
     raise RuntimeError("input to _none_or_dtype() must be None or torch.Tensor")
 
+
 def rotate_half(x):
-    x1 = x[..., :x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2:]
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat([-x2, x1], dim=-1)
 
-def apply_rotary_pos_emb(q, k, q_sinu=None, k_sinu=None, sinu=None, unsqueeze_dim=1, args=None, q_offset=0): 
+
+def apply_rotary_pos_emb(
+    q, k, q_sinu=None, k_sinu=None, sinu=None, unsqueeze_dim=1, args=None, q_offset=0
+):
     if sinu is not None:
-        q_emb = q * sinu['cos'][:, q_offset:q_offset+q.shape[2]].unsqueeze(unsqueeze_dim) + rotate_half(q) * sinu['sin'][:, q_offset:q_offset+q.shape[2]].unsqueeze(unsqueeze_dim)
-        k_emb = k * sinu['cos'][:, :k.shape[2]].unsqueeze(unsqueeze_dim) + rotate_half(k) * sinu['sin'][:, :k.shape[2]].unsqueeze(unsqueeze_dim) 
+        q_emb = q * sinu["cos"][:, q_offset : q_offset + q.shape[2]].unsqueeze(
+            unsqueeze_dim
+        ) + rotate_half(q) * sinu["sin"][:, q_offset : q_offset + q.shape[2]].unsqueeze(
+            unsqueeze_dim
+        )
+        k_emb = k * sinu["cos"][:, : k.shape[2]].unsqueeze(unsqueeze_dim) + rotate_half(
+            k
+        ) * sinu["sin"][:, : k.shape[2]].unsqueeze(unsqueeze_dim)
     if q_sinu is not None:
         assert sinu is None, "sinu must be None"
-        q_emb = q * q_sinu['cos'][:, :, q_offset:q_offset+q.shape[2]] + rotate_half(q) * q_sinu['sin'][:, :, q_offset:q_offset+q.shape[2]]
-        k_emb = k * k_sinu['cos'][:, :, :k.shape[2]] + rotate_half(k) * k_sinu['sin'][:, :, :k.shape[2]]
+        q_emb = (
+            q * q_sinu["cos"][:, :, q_offset : q_offset + q.shape[2]]
+            + rotate_half(q) * q_sinu["sin"][:, :, q_offset : q_offset + q.shape[2]]
+        )
+        k_emb = (
+            k * k_sinu["cos"][:, :, : k.shape[2]]
+            + rotate_half(k) * k_sinu["sin"][:, :, : k.shape[2]]
+        )
     # else:
     #     assert freqs is not None, "freqs must be provided"
     #     assert key_lens is not None, "key_lens must be provided"
@@ -243,6 +275,7 @@ class MultiheadAttention(Module):
         >>> attn_output, attn_output_weights = multihead_attn(query, key, value)
 
     """
+
     __constants__ = ["batch_first"]
     bias_k: Optional[torch.Tensor]
     bias_v: Optional[torch.Tensor]
@@ -268,9 +301,7 @@ class MultiheadAttention(Module):
         self.embed_dim = embed_dim
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
-        self._qkv_same_embed_dim = (
-            self.kdim == embed_dim and self.vdim == embed_dim
-        )
+        self._qkv_same_embed_dim = self.kdim == embed_dim and self.vdim == embed_dim
 
         self.num_heads = num_heads
         self.dropout = dropout
@@ -281,12 +312,8 @@ class MultiheadAttention(Module):
         ), "embed_dim must be divisible by num_heads"
 
         if add_bias_kv:
-            self.bias_k = Parameter(
-                torch.empty((1, 1, embed_dim), **factory_kwargs)
-            )
-            self.bias_v = Parameter(
-                torch.empty((1, 1, embed_dim), **factory_kwargs)
-            )
+            self.bias_k = Parameter(torch.empty((1, 1, embed_dim), **factory_kwargs))
+            self.bias_v = Parameter(torch.empty((1, 1, embed_dim), **factory_kwargs))
         else:
             self.bias_k = self.bias_v = None
 
@@ -311,7 +338,7 @@ class MultiheadAttention(Module):
                 self.register_parameter("k_proj_weight", None)
                 self.register_parameter("v_proj_weight", None)
 
-            if bias: # True by default
+            if bias:  # True by default
                 self.in_proj_bias = Parameter(
                     torch.empty(3 * embed_dim, **factory_kwargs)
                 )
@@ -385,11 +412,11 @@ class MultiheadAttention(Module):
         attn_mask: Optional[Tensor] = None,
         average_attn_weights: bool = True,
         past: Optional[Tensor] = None,
-        q_sinu = None,
-        k_sinu = None,
-        sinu = None,
-        args = None,
-        q_offset = 0,
+        q_sinu=None,
+        k_sinu=None,
+        sinu=None,
+        args=None,
+        q_offset=0,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         r"""
         Args:
@@ -453,20 +480,18 @@ class MultiheadAttention(Module):
                 )
         why_not_fast_path = ""
         if not is_batched:
-            why_not_fast_path = f"input not batched; expected query.dim() of 3 but got {query.dim()}"
+            why_not_fast_path = (
+                f"input not batched; expected query.dim() of 3 but got {query.dim()}"
+            )
         elif query is not key or key is not value:
             # When lifting this restriction, don't forget to either
             # enforce that the dtypes all match or test cases where
             # they don't!
             why_not_fast_path = "non-self attention was used (query, key, and value are not the same Tensor)"
-        elif (
-            self.in_proj_bias is not None
-            and query.dtype != self.in_proj_bias.dtype
-        ):
+        elif self.in_proj_bias is not None and query.dtype != self.in_proj_bias.dtype:
             why_not_fast_path = f"dtypes of query ({query.dtype}) and self.in_proj_bias ({self.in_proj_bias.dtype}) don't match"
         elif (
-            self.in_proj_weight is not None
-            and query.dtype != self.in_proj_weight.dtype
+            self.in_proj_weight is not None and query.dtype != self.in_proj_weight.dtype
         ):
             # this case will fail anyway, but at least they'll get a useful error message.
             why_not_fast_path = f"dtypes of query ({query.dtype}) and self.in_proj_weight ({self.in_proj_weight.dtype}) don't match"
@@ -515,9 +540,7 @@ class MultiheadAttention(Module):
                     for x in tensor_args
                 ]
             ):
-                why_not_fast_path = (
-                    "some Tensor argument is neither CUDA nor CPU"
-                )
+                why_not_fast_path = "some Tensor argument is neither CUDA nor CPU"
             elif torch.is_grad_enabled() and any(
                 [x is not None and x.requires_grad for x in tensor_args]
             ):
@@ -536,16 +559,14 @@ class MultiheadAttention(Module):
                     self.in_proj_bias,
                     self.out_proj.weight,
                     self.out_proj.bias,
-                    key_padding_mask
-                    if key_padding_mask is not None
-                    else attn_mask,
+                    key_padding_mask if key_padding_mask is not None else attn_mask,
                     need_weights,
                     average_attn_weights,
-                    1
-                    if key_padding_mask is not None
-                    else 0
-                    if attn_mask is not None
-                    else None,
+                    (
+                        1
+                        if key_padding_mask is not None
+                        else 0 if attn_mask is not None else None
+                    ),
                 )
 
         any_nested = query.is_nested or key.is_nested or value.is_nested
@@ -563,9 +584,7 @@ class MultiheadAttention(Module):
                     query, key = [x.transpose(1, 0) for x in (query, key)]
                     value = key
             else:
-                query, key, value = [
-                    x.transpose(1, 0) for x in (query, key, value)
-                ]
+                query, key, value = [x.transpose(1, 0) for x in (query, key, value)]
 
         if not self._qkv_same_embed_dim:
             attn_output, attn_output_weights = F.multi_head_attention_forward(
@@ -624,62 +643,78 @@ class MultiheadAttention(Module):
                 mask_name="key_padding_mask",
                 other_type=_none_or_dtype(attn_mask),
                 other_name="attn_mask",
-                target_type=query.dtype
+                target_type=query.dtype,
             )
             attn_mask = _canonical_mask(
-                            mask=attn_mask,
-                            mask_name="attn_mask",
-                            other_type=None,
-                            other_name="",
-                            target_type=query.dtype,
-                            check_other=False,
-                            )
+                mask=attn_mask,
+                mask_name="attn_mask",
+                other_type=None,
+                other_name="",
+                target_type=query.dtype,
+                check_other=False,
+            )
             head_dim = self.embed_dim // self.num_heads
-            assert head_dim * self.num_heads == self.embed_dim, f"embed_dim {self.embed_dim} not divisible by num_heads {self.num_heads}"
-            assert key.shape == value.shape, f"key shape {key.shape} does not match value shape {value.shape}"
-            q, k, v = _in_projection_packed(query, key, value, self.in_proj_weight, self.in_proj_bias)
+            assert (
+                head_dim * self.num_heads == self.embed_dim
+            ), f"embed_dim {self.embed_dim} not divisible by num_heads {self.num_heads}"
+            assert (
+                key.shape == value.shape
+            ), f"key shape {key.shape} does not match value shape {value.shape}"
+            q, k, v = _in_projection_packed(
+                query, key, value, self.in_proj_weight, self.in_proj_bias
+            )
             # k_present, v_present = k, v
-            
+
             #
             # reshape q, k, v for multihead attention and make em batch first
             #
-            
 
-            
             q = q.view(tgt_len, bsz * num_heads, head_dim).transpose(0, 1)
             k = k.view(k.shape[0], bsz * num_heads, head_dim).transpose(0, 1)
-            v = v.view(v.shape[0], bsz * num_heads, head_dim).transpose(0, 1) # (bsz * num_heads, src_len, head_dim)
+            v = v.view(v.shape[0], bsz * num_heads, head_dim).transpose(
+                0, 1
+            )  # (bsz * num_heads, src_len, head_dim)
             src_len = k.size(1)
             if past is not None and past.ndim > 2:
                 expected_src_len = src_len + past[0].shape[-2]
             else:
                 expected_src_len = src_len
 
-
             # ensure attn_mask's dim is 3
             if attn_mask is not None:
                 if attn_mask.dim() == 2:
                     correct_2d_size = (tgt_len, expected_src_len)
                     if attn_mask.shape != correct_2d_size:
-                        raise RuntimeError(f"The shape of the 2D attn_mask is {attn_mask.shape}, but should be {correct_2d_size}.")
+                        raise RuntimeError(
+                            f"The shape of the 2D attn_mask is {attn_mask.shape}, but should be {correct_2d_size}."
+                        )
                     attn_mask = attn_mask.unsqueeze(0)
                 elif attn_mask.dim() == 3:
                     correct_3d_size = (bsz * num_heads, tgt_len, expected_src_len)
                     if attn_mask.shape != correct_3d_size:
-                        raise RuntimeError(f"The shape of the 3D attn_mask is {attn_mask.shape}, but should be {correct_3d_size}.")
+                        raise RuntimeError(
+                            f"The shape of the 3D attn_mask is {attn_mask.shape}, but should be {correct_3d_size}."
+                        )
                 else:
-                    raise RuntimeError(f"attn_mask's dimension {attn_mask.dim()} is not supported")
-            
+                    raise RuntimeError(
+                        f"attn_mask's dimension {attn_mask.dim()} is not supported"
+                    )
+
             if key_padding_mask is not None:
-                assert key_padding_mask.shape == (bsz, expected_src_len), \
-                    f"expecting key_padding_mask shape of {(bsz, expected_src_len)}, but got {key_padding_mask.shape}"
-                key_padding_mask = key_padding_mask.view(bsz, 1, 1, expected_src_len).   \
-                    expand(-1, num_heads, -1, -1).reshape(bsz * num_heads, 1, expected_src_len)
+                assert key_padding_mask.shape == (
+                    bsz,
+                    expected_src_len,
+                ), f"expecting key_padding_mask shape of {(bsz, expected_src_len)}, but got {key_padding_mask.shape}"
+                key_padding_mask = (
+                    key_padding_mask.view(bsz, 1, 1, expected_src_len)
+                    .expand(-1, num_heads, -1, -1)
+                    .reshape(bsz * num_heads, 1, expected_src_len)
+                )
                 if attn_mask is None:
                     attn_mask = key_padding_mask
                 else:
                     attn_mask = attn_mask + key_padding_mask
-            
+
             if not self.training:
                 dropout_p = 0.0
             else:
@@ -731,8 +766,12 @@ class MultiheadAttention(Module):
                 v = v.view(bsz, num_heads, src_len, head_dim)
                 # logging.info(f"shape of past: {past.shape}")
                 if past is not None:
-                    present = torch.stack([k, v], dim=0) # (2, bsz, num_heads, src_len, head_dim)
-                    if past.ndim > 2: # this means we use kvcache, otherwise we just pass in a placeholder, but not actually using kvcache
+                    present = torch.stack(
+                        [k, v], dim=0
+                    )  # (2, bsz, num_heads, src_len, head_dim)
+                    if (
+                        past.ndim > 2
+                    ):  # this means we use kvcache, otherwise we just pass in a placeholder, but not actually using kvcache
                         pk, pv = past
                         k = torch.cat([pk, k], dim=-2)
                         v = torch.cat([pv, v], dim=-2)
@@ -742,23 +781,40 @@ class MultiheadAttention(Module):
                 # here we assume that this kvcache is only used in self-attention, and therefore k and q always have the same seq_len
                 # rope positional encoding
                 if sinu is not None:
-                    # direct rotary 
+                    # direct rotary
                     # logging.info("perform rotary positional encoding")
-                    q, k = apply_rotary_pos_emb(q, k, sinu=sinu, args = args, q_offset=q_offset)
+                    q, k = apply_rotary_pos_emb(
+                        q, k, sinu=sinu, args=args, q_offset=q_offset
+                    )
                 if q_sinu is not None:
                     assert sinu is None, "sinu and q_sinu cannot be used together"
                     assert k_sinu is not None, "k_sinu must be provided"
-                    q, k = apply_rotary_pos_emb(q, k, q_sinu=q_sinu, k_sinu=k_sinu, args = args, q_offset=q_offset)
-                
+                    q, k = apply_rotary_pos_emb(
+                        q, k, q_sinu=q_sinu, k_sinu=k_sinu, args=args, q_offset=q_offset
+                    )
+
                 # if self.training and it's cross attention, will get attention_weights
-                if args != None and self.training and getattr(args, "attention_alignment_loss", 0) and not (query is key):
+                if (
+                    args != None
+                    and self.training
+                    and getattr(args, "attention_alignment_loss", 0)
+                    and not (query is key)
+                ):
                     attention_weights = q @ k.transpose(-1, -2)
                 else:
                     attention_weights = None
-                attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal=False)
-                attn_output = attn_output.permute(2, 0, 1, 3).contiguous().view(bsz * tgt_len, embed_dim)
+                attn_output = F.scaled_dot_product_attention(
+                    q, k, v, attn_mask, dropout_p, is_causal=False
+                )
+                attn_output = (
+                    attn_output.permute(2, 0, 1, 3)
+                    .contiguous()
+                    .view(bsz * tgt_len, embed_dim)
+                )
 
-                attn_output = F.linear(attn_output, self.out_proj.weight, self.out_proj.bias)
+                attn_output = F.linear(
+                    attn_output, self.out_proj.weight, self.out_proj.bias
+                )
                 attn_output = attn_output.view(tgt_len, bsz, attn_output.size(1))
                 if not is_batched:
                     # squeeze the output if input was unbatched
@@ -769,13 +825,18 @@ class MultiheadAttention(Module):
                 #     return (attn_output, present), None
 
         # harded coded, the code do not support returning attn weigths yet
-        attn_output_weights=None
+        attn_output_weights = None
         if self.batch_first and is_batched:
             if attention_weights != None:
-                return {"attn_output": attn_output.transpose(1, 0), "attention_weights": attention_weights}, present
+                return {
+                    "attn_output": attn_output.transpose(1, 0),
+                    "attention_weights": attention_weights,
+                }, present
             return attn_output.transpose(1, 0), present
         else:
             if attention_weights != None:
-                return {"attn_output": attn_output, "attention_weights": attention_weights}, present
+                return {
+                    "attn_output": attn_output,
+                    "attention_weights": attention_weights,
+                }, present
             return attn_output, present
-

@@ -1,3 +1,11 @@
+"""
+VoiceStar: Robust, Duration-Controllable TTS that can Extrapolate
+
+GitHub: https://github.com/jasonppy/VoiceStar
+License: MIT
+
+Copyright (c) 2025 Puyuan Peng
+"""
 
 import torch
 import math
@@ -9,8 +17,18 @@ from typing import List
 from scipy.stats import lognorm
 import logging
 
+
 class StatefulDistributedSampler(Sampler[int]):
-    def __init__(self, dataset, batch_size, num_replicas = None, rank = None, shuffle = True, seed = 0, drop_last = False):
+    def __init__(
+        self,
+        dataset,
+        batch_size,
+        num_replicas=None,
+        rank=None,
+        shuffle=True,
+        seed=0,
+        drop_last=False,
+    ):
         if num_replicas is None:
             if not dist.is_available():
                 raise RuntimeError("Requires distributed package to be available")
@@ -22,7 +40,8 @@ class StatefulDistributedSampler(Sampler[int]):
         if rank >= num_replicas or rank < 0:
             raise ValueError(
                 "Invalid rank {}, rank should be in the interval"
-                " [0, {}]".format(rank, num_replicas - 1))
+                " [0, {}]".format(rank, num_replicas - 1)
+            )
         self.dataset = dataset
         self.batch_size = batch_size
         self.num_replicas = num_replicas
@@ -45,6 +64,7 @@ class StatefulDistributedSampler(Sampler[int]):
         self.shuffle = shuffle
         self.seed = seed
         self.continue_flag = False
+
     def __len__(self):
         return self.num_samples
 
@@ -73,25 +93,27 @@ class StatefulDistributedSampler(Sampler[int]):
             if padding_size <= len(indices):
                 indices += indices[:padding_size]
             else:
-                indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
+                indices += (indices * math.ceil(padding_size / len(indices)))[
+                    :padding_size
+                ]
         else:
             # remove tail of data to make it evenly divisible.
-            indices = indices[:self.total_size]
+            indices = indices[: self.total_size]
         assert len(indices) == self.total_size
 
         # subsample
-        indices = indices[self.rank:self.total_size:self.num_replicas]
+        indices = indices[self.rank : self.total_size : self.num_replicas]
         assert len(indices) == self.num_samples
         self.indices = indices
 
         if self.continue_flag:
-            self.indices = self.indices[int(self.cur_step*self.batch_size):]
+            self.indices = self.indices[int(self.cur_step * self.batch_size) :]
             self.num_samples = len(self.indices)
             self.continue_flag = False
-                
+
     def __iter__(self):
         for idx in self.indices:
-            yield idx  
+            yield idx
 
     def set_epoch_resume(self, epoch, cur_step):
         self.epoch = epoch
@@ -100,7 +122,9 @@ class StatefulDistributedSampler(Sampler[int]):
 
 
 class StatefulSampler(Sampler):
-    def __init__(self, data_source_length, batch_size, use_random=True, seed=1, epoch=0):
+    def __init__(
+        self, data_source_length, batch_size, use_random=True, seed=1, epoch=0
+    ):
         self.use_random = use_random
         self.data_source_length = data_source_length
         self.num_samples = self.data_source_length
@@ -129,10 +153,10 @@ class StatefulSampler(Sampler):
             self.indices = list(range(self.data_source_length))  # type: ignore[arg-type]
         if self.continue_flag == True:
             self.continue_flag = False
-            self.indices = self.indices[int(self.cur_step*self.batch_size):]
-        
+            self.indices = self.indices[int(self.cur_step * self.batch_size) :]
+
         self.num_samples = len(self.indices)
-    
+
     def set_epoch_resume(self, epoch, cur_step):
         self.epoch = epoch
         self.cur_step = cur_step
@@ -141,6 +165,7 @@ class StatefulSampler(Sampler):
 
 class AverageMeter:
     """Computes and stores the average and current value"""
+
     def __init__(self):
         self.reset()
 
@@ -156,7 +181,8 @@ class AverageMeter:
         self.count += n
         self.avg = self.sum / self.count
 
-def print_model_info(model, print_model = False, print_params = True):
+
+def print_model_info(model, print_model=False, print_params=True):
     if print_model:
         logging.info(model)
     if print_params:
@@ -284,11 +310,11 @@ class DistributedDynamicBatchSampler(Sampler):
         self,
         dataset,
         args,
-        num_replicas = None, 
-        rank = None, 
-        shuffle = True, 
-        seed = 0, 
-        drop_last = False,
+        num_replicas=None,
+        rank=None,
+        shuffle=True,
+        seed=0,
+        drop_last=False,
         length_func=lambda x: x["duration"],
         batch_ordering: str = "random",
         max_batch_ex: int = None,
@@ -309,20 +335,26 @@ class DistributedDynamicBatchSampler(Sampler):
         if rank >= num_replicas or rank < 0:
             raise ValueError(
                 "Invalid rank {}, rank should be in the interval"
-                " [0, {}]".format(rank, num_replicas - 1))
+                " [0, {}]".format(rank, num_replicas - 1)
+            )
         self.num_replicas = num_replicas
         self.rank = rank
-        max_batch_length = self.args.max_num_tokens if dataset.split == "train" else self.args.val_max_num_tokens
+        max_batch_length = (
+            self.args.max_num_tokens
+            if dataset.split == "train"
+            else self.args.val_max_num_tokens
+        )
         if type(lengths_list[0]) == float:
             max_batch_length = float(max_batch_length) / self.args.encodec_sr
-            logging.info(f"max_num_seconds per GPU for {dataset.split} split: {max_batch_length} seconds")
+            logging.info(
+                f"max_num_seconds per GPU for {dataset.split} split: {max_batch_length} seconds"
+            )
         else:
-            logging.info(f"max_num_tokens per GPU for {dataset.split} split: {max_batch_length}")
+            logging.info(
+                f"max_num_tokens per GPU for {dataset.split} split: {max_batch_length}"
+            )
         num_buckets = self.args.num_buckets
         #############
-        
-
-
 
         self._dataset = dataset
         self._ex_lengths = {}
@@ -336,8 +368,14 @@ class DistributedDynamicBatchSampler(Sampler):
                 "Check the docs, and/or the tutorial !"
             )
         assert lengths_list != None
-        max_len = int(self.args.audio_max_length * self.args.encodec_sr) if type(lengths_list[0]) == int else self.args.audio_max_length # if the length is in float, that means it's in seconds, otherwise it's in number of frames
-        lengths_list = [min(l, max_len) for l in lengths_list] # replace all utt whose length is longer than max_len to max_len, will also do this in __getitem__ in dataset
+        max_len = (
+            int(self.args.audio_max_length * self.args.encodec_sr)
+            if type(lengths_list[0]) == int
+            else self.args.audio_max_length
+        )  # if the length is in float, that means it's in seconds, otherwise it's in number of frames
+        lengths_list = [
+            min(l, max_len) for l in lengths_list
+        ]  # replace all utt whose length is longer than max_len to max_len, will also do this in __getitem__ in dataset
         for indx in range(len(lengths_list)):
             self._ex_lengths[str(indx)] = lengths_list[indx]
         # if lengths_list is not None:
@@ -361,9 +399,7 @@ class DistributedDynamicBatchSampler(Sampler):
                     "All elements in bucket boundaries should be non-negative (>= 0)."
                 )
             if not len(set(bucket_boundaries)) == len(bucket_boundaries):
-                raise ValueError(
-                    "Bucket_boundaries should not contain duplicates."
-                )
+                raise ValueError("Bucket_boundaries should not contain duplicates.")
             np.testing.assert_array_equal(
                 np.array(bucket_boundaries),
                 np.array(sorted(bucket_boundaries)),
@@ -399,21 +435,29 @@ class DistributedDynamicBatchSampler(Sampler):
         self._generate_batches()
         self.num_samples = int(math.floor(len(self._batches) / self.num_replicas))
         self.total_size = int(self.num_samples * self.num_replicas)
-        self._replica_batches = self._batches[self.rank:self.total_size:self.num_replicas]
-        assert len(self._replica_batches) == self.num_samples, f"len(self._batches): {len(self._batches)}, self.total_size: {self.total_size}, self.num_samples: {self.num_samples},len(self._replica_batches): {len(self._replica_batches)}"
-        logging.info(f"len(self._batches): {len(self._batches)}") # 285773
-        logging.info(f"self.total_size: {self.total_size}") # 285768
-        logging.info(f"self.num_samples: {self.num_samples}") # 35721
-        logging.info(f"len(self._replica_batches): {len(self._replica_batches)}") # 35721
-        logging.info(f"self.num_replicas: {self.num_replicas}") # 8 
-        #logging.info(f"num of batches on each replica: {self.num_samples}") # 35721
+        self._replica_batches = self._batches[
+            self.rank : self.total_size : self.num_replicas
+        ]
+        assert (
+            len(self._replica_batches) == self.num_samples
+        ), f"len(self._batches): {len(self._batches)}, self.total_size: {self.total_size}, self.num_samples: {self.num_samples},len(self._replica_batches): {len(self._replica_batches)}"
+        logging.info(f"len(self._batches): {len(self._batches)}")  # 285773
+        logging.info(f"self.total_size: {self.total_size}")  # 285768
+        logging.info(f"self.num_samples: {self.num_samples}")  # 35721
+        logging.info(
+            f"len(self._replica_batches): {len(self._replica_batches)}"
+        )  # 35721
+        logging.info(f"self.num_replicas: {self.num_replicas}")  # 8
+        # logging.info(f"num of batches on each replica: {self.num_samples}") # 35721
 
     def get_durations(self, batch):
         """Gets durations of the elements in the batch."""
         return [self._ex_lengths[str(idx)] for idx in batch]
 
     def _get_boundaries_through_warping(
-        self, max_batch_length: int, num_quantiles: int,
+        self,
+        max_batch_length: int,
+        num_quantiles: int,
     ) -> List[int]:
 
         # NOTE: the following lines do not cover that there is only one example in the dataset
@@ -423,7 +467,9 @@ class DistributedDynamicBatchSampler(Sampler):
         num_boundaries = num_quantiles + 1
         # create latent linearly equal spaced buckets
         latent_boundaries = np.linspace(
-            1 / num_boundaries, num_quantiles / num_boundaries, num_quantiles,
+            1 / num_boundaries,
+            num_quantiles / num_boundaries,
+            num_quantiles,
         )
         # get quantiles using lognormal distribution
         quantiles = lognorm.ppf(latent_boundaries, 1)
@@ -448,7 +494,9 @@ class DistributedDynamicBatchSampler(Sampler):
         if self._batch_ordering == "random":
             # deterministically shuffle based on epoch and seed
             g = torch.Generator()
-            g.manual_seed(self._seed + self._epoch) # since the random seed is based on self._seed and self._epoch, it should be the same for different processes when using DDP, and therefore the generated order should be the same across different process, this is important, because each replica will only take a portion of it, we want to make sure they take a non-overlapping portion, and all of them constitute the entire dataset
+            g.manual_seed(
+                self._seed + self._epoch
+            )  # since the random seed is based on self._seed and self._epoch, it should be the same for different processes when using DDP, and therefore the generated order should be the same across different process, this is important, because each replica will only take a portion of it, we want to make sure they take a non-overlapping portion, and all of them constitute the entire dataset
             sampler = torch.randperm(
                 len(self._batches), generator=g
             ).tolist()  # type: ignore
@@ -476,8 +524,10 @@ class DistributedDynamicBatchSampler(Sampler):
         if self._shuffle_ex:
             # deterministically shuffle based on epoch and seed
             g = torch.Generator()
-            g.manual_seed(self._seed + self._epoch) # since the random seed is based on self._seed and self._epoch, it should be the same for different processes when using DDP, and therefore the generated order should be the same across different process, this is important, because each replica will only take a portion of it, we want to make sure they take a non-overlapping portion, and all of them constitute the entire dataset
-            sampler = torch.randperm(len(self._dataset), generator=g).tolist()  # type: ignore 
+            g.manual_seed(
+                self._seed + self._epoch
+            )  # since the random seed is based on self._seed and self._epoch, it should be the same for different processes when using DDP, and therefore the generated order should be the same across different process, this is important, because each replica will only take a portion of it, we want to make sure they take a non-overlapping portion, and all of them constitute the entire dataset
+            sampler = torch.randperm(len(self._dataset), generator=g).tolist()  # type: ignore
             # pyp note: this is actually randomly permoted indices
         else:
             # take examples as they are: e.g. they have been sorted
@@ -530,16 +580,23 @@ class DistributedDynamicBatchSampler(Sampler):
             # put the 5 longest batches in the beginning
             # find 5 longest from self._ex_lengths, which is a dict of lengths, with key being index (in str), and value being length
             # sort the dict by value, and get the first 5 keys
-            self._batches = sorted(
-                self._batches,
-                key=lambda x: max([self._ex_lengths[str(idx)] for idx in x]),
-                reverse=True,
-            )[:5] + self._batches[5:]
+            self._batches = (
+                sorted(
+                    self._batches,
+                    key=lambda x: max([self._ex_lengths[str(idx)] for idx in x]),
+                    reverse=True,
+                )[:5]
+                + self._batches[5:]
+            )
             if not dist.is_initialized() or dist.get_rank() == 0:
-                logging.info(f"replace the first 5 samples in the batch with the 5 longest samples: ")
+                logging.info(
+                    f"replace the first 5 samples in the batch with the 5 longest samples: "
+                )
                 logging.info(f"their lengths: ")
                 for i in range(5):
-                    logging.info(f"{[self._ex_lengths[str(idx)] for idx in self._batches[i]]}")
+                    logging.info(
+                        f"{[self._ex_lengths[str(idx)] for idx in self._batches[i]]}"
+                    )
 
             # frames per batch & their padding remaining
             boundaries = [0] + self._bucket_boundaries.tolist()
@@ -582,18 +639,11 @@ class DistributedDynamicBatchSampler(Sampler):
                     "pad_%": [],
                 }
                 for batch in self._batches:
-                    tot_frames = sum(
-                        [self._ex_lengths[str(idx)] for idx in batch]
-                    )
+                    tot_frames = sum([self._ex_lengths[str(idx)] for idx in batch])
                     batch_stats["tot_frames"].append(tot_frames)
-                    max_frames = max(
-                        [self._ex_lengths[str(idx)] for idx in batch]
-                    )
+                    max_frames = max([self._ex_lengths[str(idx)] for idx in batch])
                     tot_pad = sum(
-                        [
-                            max_frames - self._ex_lengths[str(idx)]
-                            for idx in batch
-                        ]
+                        [max_frames - self._ex_lengths[str(idx)] for idx in batch]
                     )
                     batch_stats["tot_pad_frames"].append(tot_pad)
                     batch_stats["pad_%"].append(tot_pad / tot_frames * 100)
@@ -616,7 +666,6 @@ class DistributedDynamicBatchSampler(Sampler):
         for batch in self._replica_batches:
             yield batch
 
-
         # if self._shuffle_ex:  # re-generate examples if ex_ordering == "random"
         #     self._generate_batches()
         # if self._batch_ordering == "random":
@@ -630,19 +679,22 @@ class DistributedDynamicBatchSampler(Sampler):
         """
         self._epoch = epoch
         self._generate_batches()
-        self._replica_batches = self._batches[self.rank:self.total_size:self.num_replicas]
+        self._replica_batches = self._batches[
+            self.rank : self.total_size : self.num_replicas
+        ]
         self.num_samples = int(math.floor(len(self._batches) / self.num_replicas))
-        assert len(self._replica_batches) == self.num_samples, f"len(self._batches): {len(self._batches)}, self.total_size: {self.total_size}, self.num_samples: {self.num_samples},len(self._replica_batches): {len(self._replica_batches)}"
+        assert (
+            len(self._replica_batches) == self.num_samples
+        ), f"len(self._batches): {len(self._batches)}, self.total_size: {self.total_size}, self.num_samples: {self.num_samples},len(self._replica_batches): {len(self._replica_batches)}"
 
         if self.continue_flag:
             self.continue_flag = False
-            self._replica_batches = self._replica_batches[self._cur_step:]
+            self._replica_batches = self._replica_batches[self._cur_step :]
             self.num_samples = len(self._replica_batches)
- 
 
     def __len__(self):
         return self.num_samples
-    
+
     def set_epoch_resume(self, epoch, cur_step):
         self.continue_flag = True
         self._epoch = epoch
