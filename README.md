@@ -31,6 +31,8 @@ voicestar --reference-speech "./demo/5895_34622_000026_000002.wav" --target-text
 
 Please refer to the CLI and Python API documentation below for more advanced usage.
 
+_Note: Both CUDA, CPU, and MPS (Apple Silicon) are supported._
+
 ## Training
 
 Please refer to the [training docs](docs/training.md) for more information.
