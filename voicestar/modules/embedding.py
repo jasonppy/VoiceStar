@@ -1,5 +1,5 @@
-# cp from https://github.com/lifeiteng/vall-e/blob/main/valle/modules/embedding.py
-# Copyright    2023                             (authors: Feiteng Li)
+# From https://github.com/lifeiteng/vall-e/blob/main/valle/modules/embedding.py (Apache 2.0 license)
+# Copyright 2023 (authors: Feiteng Li)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -79,9 +79,7 @@ class SinePositionalEmbedding(nn.Module):
                 x.size(1) - 1, -1, -1.0, dtype=torch.float32
             ).unsqueeze(1)
         else:
-            position = torch.arange(
-                0, x.size(1), dtype=torch.float32
-            ).unsqueeze(1)
+            position = torch.arange(0, x.size(1), dtype=torch.float32).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, self.dim_model, 2, dtype=torch.float32)
             * -(math.log(10000.0) / self.dim_model)
@@ -105,7 +103,7 @@ class SinePositionalEmbedding_progress(nn.Module):
         dropout: float = 0.0,
         scale: bool = False,
         alpha: bool = False,
-        args = None
+        args=None,
     ):
         super().__init__()
         self.args = args
@@ -115,10 +113,14 @@ class SinePositionalEmbedding_progress(nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
 
         self.reverse = False
-        self.div_term = torch.exp(
-            torch.arange(0, self.dim_model, 2, dtype=torch.float32)
-            * -(math.log(args.sinusoidal_base) / self.dim_model)
-        ).unsqueeze(0).unsqueeze(0) # [1, 1, dim_model//2]
+        self.div_term = (
+            torch.exp(
+                torch.arange(0, self.dim_model, 2, dtype=torch.float32)
+                * -(math.log(args.sinusoidal_base) / self.dim_model)
+            )
+            .unsqueeze(0)
+            .unsqueeze(0)
+        )  # [1, 1, dim_model//2]
         self.position = None
         self.extend_position(torch.tensor(0.0).expand(1, 10000))
         self.progress_scale = getattr(args, "progress_scale", 1.0)
@@ -133,24 +135,32 @@ class SinePositionalEmbedding_progress(nn.Module):
                     self.position = self.position.to(dtype=x.dtype, device=x.device)
                 return
         if self.reverse:
-            self.position = torch.arange(
-                x.size(1) - 1, -1, -1.0, dtype=torch.float32
-            ).unsqueeze(0).unsqueeze(2).to(x)
+            self.position = (
+                torch.arange(x.size(1) - 1, -1, -1.0, dtype=torch.float32)
+                .unsqueeze(0)
+                .unsqueeze(2)
+                .to(x)
+            )
         else:
-            self.position = torch.arange(
-                0, x.size(1), dtype=torch.float32
-            ).unsqueeze(0).unsqueeze(2).to(x) # [1, seq_len, 1]
+            self.position = (
+                torch.arange(0, x.size(1), dtype=torch.float32)
+                .unsqueeze(0)
+                .unsqueeze(2)
+                .to(x)
+            )  # [1, seq_len, 1]
 
     def forward(self, x: torch.Tensor, x_lens: torch.Tensor) -> torch.Tensor:
         assert x.ndim == 3, x.shape
         self.extend_position(x)
-        x_lens = x_lens.unsqueeze(1).unsqueeze(2) # [B, 1, 1]
+        x_lens = x_lens.unsqueeze(1).unsqueeze(2)  # [B, 1, 1]
         multiple = x_lens / (x_lens - 1)
-        progress = self.position[:, :x.shape[1]] * multiple / x_lens * self.progress_scale
+        progress = (
+            self.position[:, : x.shape[1]] * multiple / x_lens * self.progress_scale
+        )
         # torch.set_printoptions(edgeitems=100)
         # for i in range(x_lens.shape[0]):
         #     logging.info(f"{progress[i, :x_lens[i,0,0], 0]}")
-        invfreq = self.div_term * progress # might want to use a scale term here
+        invfreq = self.div_term * progress  # might want to use a scale term here
         pe = torch.zeros_like(x)
         pe[..., 0::2] = torch.sin(invfreq)
         pe[..., 1::2] = torch.cos(invfreq)

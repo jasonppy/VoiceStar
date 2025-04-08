@@ -25,10 +25,13 @@ import logging
 import warnings
 from einops import rearrange, repeat
 import omegaconf
+
 # import flashy
 
-CONV_NORMALIZATIONS = frozenset(['none', 'weight_norm', 'spectral_norm',
-                                 'time_group_norm'])
+CONV_NORMALIZATIONS = frozenset(
+    ["none", "weight_norm", "spectral_norm", "time_group_norm"]
+)
+
 
 def dict_from_config(cfg: omegaconf.DictConfig) -> dict:
     """Convenience function to map an omegaconf configuration to a dictionary.
@@ -42,6 +45,7 @@ def dict_from_config(cfg: omegaconf.DictConfig) -> dict:
     assert isinstance(dct, dict)
     return dct
 
+
 @dataclass
 class QuantizedResult:
     x: torch.Tensor
@@ -50,9 +54,9 @@ class QuantizedResult:
     penalty: tp.Optional[torch.Tensor] = None
     metrics: dict = field(default_factory=dict)
 
+
 class BaseQuantizer(nn.Module):
-    """Base class for quantizers.
-    """
+    """Base class for quantizers."""
 
     def forward(self, x: torch.Tensor, frame_rate: int) -> QuantizedResult:
         """
@@ -85,17 +89,19 @@ class BaseQuantizer(nn.Module):
         """Set the number of active codebooks."""
         raise NotImplementedError()
 
+
 class CompressionModel(ABC, nn.Module):
     """Base API for all compression model that aim at being used as audio tokenizers
     with a language model.
     """
 
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> QuantizedResult:
-        ...
+    def forward(self, x: torch.Tensor) -> QuantizedResult: ...
 
     @abstractmethod
-    def encode(self, x: torch.Tensor) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
+    def encode(
+        self, x: torch.Tensor
+    ) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
         """See `EncodecModel.encode`."""
         ...
 
@@ -111,44 +117,39 @@ class CompressionModel(ABC, nn.Module):
 
     @property
     @abstractmethod
-    def channels(self) -> int:
-        ...
+    def channels(self) -> int: ...
 
     @property
     @abstractmethod
-    def frame_rate(self) -> float:
-        ...
+    def frame_rate(self) -> float: ...
 
     @property
     @abstractmethod
-    def sample_rate(self) -> int:
-        ...
+    def sample_rate(self) -> int: ...
 
     @property
     @abstractmethod
-    def cardinality(self) -> int:
-        ...
+    def cardinality(self) -> int: ...
 
     @property
     @abstractmethod
-    def num_codebooks(self) -> int:
-        ...
+    def num_codebooks(self) -> int: ...
 
     @property
     @abstractmethod
-    def total_codebooks(self) -> int:
-        ...
+    def total_codebooks(self) -> int: ...
 
     @abstractmethod
     def set_num_codebooks(self, n: int):
         """Set the active number of codebooks used by the quantizer."""
         ...
 
-def apply_parametrization_norm(module: nn.Module, norm: str = 'none'):
+
+def apply_parametrization_norm(module: nn.Module, norm: str = "none"):
     assert norm in CONV_NORMALIZATIONS
-    if norm == 'weight_norm':
+    if norm == "weight_norm":
         return weight_norm(module)
-    elif norm == 'spectral_norm':
+    elif norm == "spectral_norm":
         return spectral_norm(module)
     else:
         # We already check was in CONV_NORMALIZATION, so any other choice
@@ -156,12 +157,14 @@ def apply_parametrization_norm(module: nn.Module, norm: str = 'none'):
         return module
 
 
-def get_norm_module(module: nn.Module, causal: bool = False, norm: str = 'none', **norm_kwargs):
+def get_norm_module(
+    module: nn.Module, causal: bool = False, norm: str = "none", **norm_kwargs
+):
     """Return the proper normalization module. If causal is True, this will ensure the returned
     module is causal, or return an error if the normalization doesn't support causal evaluation.
     """
     assert norm in CONV_NORMALIZATIONS
-    if norm == 'time_group_norm':
+    if norm == "time_group_norm":
         if causal:
             raise ValueError("GroupNorm doesn't support causal evaluation.")
         assert isinstance(module, nn.modules.conv._ConvNd)
@@ -170,8 +173,9 @@ def get_norm_module(module: nn.Module, causal: bool = False, norm: str = 'none',
         return nn.Identity()
 
 
-def get_extra_padding_for_conv1d(x: torch.Tensor, kernel_size: int, stride: int,
-                                 padding_total: int = 0) -> int:
+def get_extra_padding_for_conv1d(
+    x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0
+) -> int:
     """See `pad_for_conv1d`."""
     length = x.shape[-1]
     n_frames = (length - kernel_size + padding_total) / stride + 1
@@ -179,7 +183,9 @@ def get_extra_padding_for_conv1d(x: torch.Tensor, kernel_size: int, stride: int,
     return ideal_length - length
 
 
-def pad_for_conv1d(x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0):
+def pad_for_conv1d(
+    x: torch.Tensor, kernel_size: int, stride: int, padding_total: int = 0
+):
     """Pad for a convolution to make sure that the last window is full.
     Extra padding is added at the end. This is required to ensure that we can rebuild
     an output of the same length, as otherwise, even with padding, some time steps
@@ -194,14 +200,19 @@ def pad_for_conv1d(x: torch.Tensor, kernel_size: int, stride: int, padding_total
     return F.pad(x, (0, extra_padding))
 
 
-def pad1d(x: torch.Tensor, paddings: tp.Tuple[int, int], mode: str = 'constant', value: float = 0.):
+def pad1d(
+    x: torch.Tensor,
+    paddings: tp.Tuple[int, int],
+    mode: str = "constant",
+    value: float = 0.0,
+):
     """Tiny wrapper around F.pad, just to allow for reflect padding on small input.
     If this is the case, we insert extra 0 padding to the right before the reflection happen.
     """
     length = x.shape[-1]
     padding_left, padding_right = paddings
     assert padding_left >= 0 and padding_right >= 0, (padding_left, padding_right)
-    if mode == 'reflect':
+    if mode == "reflect":
         max_pad = max(padding_left, padding_right)
         extra_pad = 0
         if length <= max_pad:
@@ -220,15 +231,22 @@ def unpad1d(x: torch.Tensor, paddings: tp.Tuple[int, int]):
     assert padding_left >= 0 and padding_right >= 0, (padding_left, padding_right)
     assert (padding_left + padding_right) <= x.shape[-1]
     end = x.shape[-1] - padding_right
-    return x[..., padding_left: end]
+    return x[..., padding_left:end]
 
 
 class NormConv1d(nn.Module):
     """Wrapper around Conv1d and normalization applied to this conv
     to provide a uniform interface across normalization approaches.
     """
-    def __init__(self, *args, causal: bool = False, norm: str = 'none',
-                 norm_kwargs: tp.Dict[str, tp.Any] = {}, **kwargs):
+
+    def __init__(
+        self,
+        *args,
+        causal: bool = False,
+        norm: str = "none",
+        norm_kwargs: tp.Dict[str, tp.Any] = {},
+        **kwargs,
+    ):
         super().__init__()
         self.conv = apply_parametrization_norm(nn.Conv1d(*args, **kwargs), norm)
         self.norm = get_norm_module(self.conv, causal, norm, **norm_kwargs)
@@ -244,7 +262,14 @@ class NormConv2d(nn.Module):
     """Wrapper around Conv2d and normalization applied to this conv
     to provide a uniform interface across normalization approaches.
     """
-    def __init__(self, *args, norm: str = 'none', norm_kwargs: tp.Dict[str, tp.Any] = {}, **kwargs):
+
+    def __init__(
+        self,
+        *args,
+        norm: str = "none",
+        norm_kwargs: tp.Dict[str, tp.Any] = {},
+        **kwargs,
+    ):
         super().__init__()
         self.conv = apply_parametrization_norm(nn.Conv2d(*args, **kwargs), norm)
         self.norm = get_norm_module(self.conv, causal=False, norm=norm, **norm_kwargs)
@@ -260,10 +285,19 @@ class NormConvTranspose1d(nn.Module):
     """Wrapper around ConvTranspose1d and normalization applied to this conv
     to provide a uniform interface across normalization approaches.
     """
-    def __init__(self, *args, causal: bool = False, norm: str = 'none',
-                 norm_kwargs: tp.Dict[str, tp.Any] = {}, **kwargs):
+
+    def __init__(
+        self,
+        *args,
+        causal: bool = False,
+        norm: str = "none",
+        norm_kwargs: tp.Dict[str, tp.Any] = {},
+        **kwargs,
+    ):
         super().__init__()
-        self.convtr = apply_parametrization_norm(nn.ConvTranspose1d(*args, **kwargs), norm)
+        self.convtr = apply_parametrization_norm(
+            nn.ConvTranspose1d(*args, **kwargs), norm
+        )
         self.norm = get_norm_module(self.convtr, causal, norm, **norm_kwargs)
         self.norm_type = norm
 
@@ -277,9 +311,18 @@ class NormConvTranspose2d(nn.Module):
     """Wrapper around ConvTranspose2d and normalization applied to this conv
     to provide a uniform interface across normalization approaches.
     """
-    def __init__(self, *args, norm: str = 'none', norm_kwargs: tp.Dict[str, tp.Any] = {}, **kwargs):
+
+    def __init__(
+        self,
+        *args,
+        norm: str = "none",
+        norm_kwargs: tp.Dict[str, tp.Any] = {},
+        **kwargs,
+    ):
         super().__init__()
-        self.convtr = apply_parametrization_norm(nn.ConvTranspose2d(*args, **kwargs), norm)
+        self.convtr = apply_parametrization_norm(
+            nn.ConvTranspose2d(*args, **kwargs), norm
+        )
         self.norm = get_norm_module(self.convtr, causal=False, norm=norm, **norm_kwargs)
 
     def forward(self, x):
@@ -292,19 +335,40 @@ class StreamableConv1d(nn.Module):
     """Conv1d with some builtin handling of asymmetric or causal padding
     and normalization.
     """
-    def __init__(self, in_channels: int, out_channels: int,
-                 kernel_size: int, stride: int = 1, dilation: int = 1,
-                 groups: int = 1, bias: bool = True, causal: bool = False,
-                 norm: str = 'none', norm_kwargs: tp.Dict[str, tp.Any] = {},
-                 pad_mode: str = 'reflect'):
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        dilation: int = 1,
+        groups: int = 1,
+        bias: bool = True,
+        causal: bool = False,
+        norm: str = "none",
+        norm_kwargs: tp.Dict[str, tp.Any] = {},
+        pad_mode: str = "reflect",
+    ):
         super().__init__()
         # warn user on unusual setup between dilation and stride
         if stride > 1 and dilation > 1:
-            warnings.warn("StreamableConv1d has been initialized with stride > 1 and dilation > 1"
-                          f" (kernel_size={kernel_size} stride={stride}, dilation={dilation}).")
-        self.conv = NormConv1d(in_channels, out_channels, kernel_size, stride,
-                               dilation=dilation, groups=groups, bias=bias, causal=causal,
-                               norm=norm, norm_kwargs=norm_kwargs)
+            warnings.warn(
+                "StreamableConv1d has been initialized with stride > 1 and dilation > 1"
+                f" (kernel_size={kernel_size} stride={stride}, dilation={dilation})."
+            )
+        self.conv = NormConv1d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            dilation=dilation,
+            groups=groups,
+            bias=bias,
+            causal=causal,
+            norm=norm,
+            norm_kwargs=norm_kwargs,
+        )
         self.causal = causal
         self.pad_mode = pad_mode
 
@@ -313,9 +377,13 @@ class StreamableConv1d(nn.Module):
         kernel_size = self.conv.conv.kernel_size[0]
         stride = self.conv.conv.stride[0]
         dilation = self.conv.conv.dilation[0]
-        kernel_size = (kernel_size - 1) * dilation + 1  # effective kernel size with dilations
+        kernel_size = (
+            kernel_size - 1
+        ) * dilation + 1  # effective kernel size with dilations
         padding_total = kernel_size - stride
-        extra_padding = get_extra_padding_for_conv1d(x, kernel_size, stride, padding_total)
+        extra_padding = get_extra_padding_for_conv1d(
+            x, kernel_size, stride, padding_total
+        )
         if self.causal:
             # Left padding for causal
             x = pad1d(x, (padding_total, extra_padding), mode=self.pad_mode)
@@ -323,7 +391,9 @@ class StreamableConv1d(nn.Module):
             # Asymmetric padding required for odd strides
             padding_right = padding_total // 2
             padding_left = padding_total - padding_right
-            x = pad1d(x, (padding_left, padding_right + extra_padding), mode=self.pad_mode)
+            x = pad1d(
+                x, (padding_left, padding_right + extra_padding), mode=self.pad_mode
+            )
         return self.conv(x)
 
 
@@ -331,18 +401,34 @@ class StreamableConvTranspose1d(nn.Module):
     """ConvTranspose1d with some builtin handling of asymmetric or causal padding
     and normalization.
     """
-    def __init__(self, in_channels: int, out_channels: int,
-                 kernel_size: int, stride: int = 1, causal: bool = False,
-                 norm: str = 'none', trim_right_ratio: float = 1.,
-                 norm_kwargs: tp.Dict[str, tp.Any] = {}):
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        causal: bool = False,
+        norm: str = "none",
+        trim_right_ratio: float = 1.0,
+        norm_kwargs: tp.Dict[str, tp.Any] = {},
+    ):
         super().__init__()
-        self.convtr = NormConvTranspose1d(in_channels, out_channels, kernel_size, stride,
-                                          causal=causal, norm=norm, norm_kwargs=norm_kwargs)
+        self.convtr = NormConvTranspose1d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            causal=causal,
+            norm=norm,
+            norm_kwargs=norm_kwargs,
+        )
         self.causal = causal
         self.trim_right_ratio = trim_right_ratio
-        assert self.causal or self.trim_right_ratio == 1., \
-            "`trim_right_ratio` != 1.0 only makes sense for causal convolutions"
-        assert self.trim_right_ratio >= 0. and self.trim_right_ratio <= 1.
+        assert (
+            self.causal or self.trim_right_ratio == 1.0
+        ), "`trim_right_ratio` != 1.0 only makes sense for causal convolutions"
+        assert self.trim_right_ratio >= 0.0 and self.trim_right_ratio <= 1.0
 
     def forward(self, x):
         kernel_size = self.convtr.convtr.kernel_size[0]
@@ -373,6 +459,7 @@ class StreamableLSTM(nn.Module):
     """LSTM without worrying about the hidden state, nor the layout of the data.
     Expects input as convolutional layout.
     """
+
     def __init__(self, dimension: int, num_layers: int = 2, skip: bool = True):
         super().__init__()
         self.skip = skip
@@ -404,12 +491,25 @@ class SEANetResnetBlock(nn.Module):
         true_skip (bool): Whether to use true skip connection or a simple
             (streamable) convolution as the skip connection.
     """
-    def __init__(self, dim: int, kernel_sizes: tp.List[int] = [3, 1], dilations: tp.List[int] = [1, 1],
-                 activation: str = 'ELU', activation_params: dict = {'alpha': 1.0},
-                 norm: str = 'none', norm_params: tp.Dict[str, tp.Any] = {}, causal: bool = False,
-                 pad_mode: str = 'reflect', compress: int = 2, true_skip: bool = True):
+
+    def __init__(
+        self,
+        dim: int,
+        kernel_sizes: tp.List[int] = [3, 1],
+        dilations: tp.List[int] = [1, 1],
+        activation: str = "ELU",
+        activation_params: dict = {"alpha": 1.0},
+        norm: str = "none",
+        norm_params: tp.Dict[str, tp.Any] = {},
+        causal: bool = False,
+        pad_mode: str = "reflect",
+        compress: int = 2,
+        true_skip: bool = True,
+    ):
         super().__init__()
-        assert len(kernel_sizes) == len(dilations), 'Number of kernel sizes should match number of dilations'
+        assert len(kernel_sizes) == len(
+            dilations
+        ), "Number of kernel sizes should match number of dilations"
         act = getattr(nn, activation)
         hidden = dim // compress
         block = []
@@ -418,17 +518,31 @@ class SEANetResnetBlock(nn.Module):
             out_chs = dim if i == len(kernel_sizes) - 1 else hidden
             block += [
                 act(**activation_params),
-                StreamableConv1d(in_chs, out_chs, kernel_size=kernel_size, dilation=dilation,
-                                 norm=norm, norm_kwargs=norm_params,
-                                 causal=causal, pad_mode=pad_mode),
+                StreamableConv1d(
+                    in_chs,
+                    out_chs,
+                    kernel_size=kernel_size,
+                    dilation=dilation,
+                    norm=norm,
+                    norm_kwargs=norm_params,
+                    causal=causal,
+                    pad_mode=pad_mode,
+                ),
             ]
         self.block = nn.Sequential(*block)
         self.shortcut: nn.Module
         if true_skip:
             self.shortcut = nn.Identity()
         else:
-            self.shortcut = StreamableConv1d(dim, dim, kernel_size=1, norm=norm, norm_kwargs=norm_params,
-                                             causal=causal, pad_mode=pad_mode)
+            self.shortcut = StreamableConv1d(
+                dim,
+                dim,
+                kernel_size=1,
+                norm=norm,
+                norm_kwargs=norm_params,
+                causal=causal,
+                pad_mode=pad_mode,
+            )
 
     def forward(self, x):
         return self.shortcut(x) + self.block(x)
@@ -462,12 +576,29 @@ class SEANetEncoder(nn.Module):
         disable_norm_outer_blocks (int): Number of blocks for which we don't apply norm.
             For the encoder, it corresponds to the N first blocks.
     """
-    def __init__(self, channels: int = 1, dimension: int = 128, n_filters: int = 32, n_residual_layers: int = 3,
-                 ratios: tp.List[int] = [8, 5, 4, 2], activation: str = 'ELU', activation_params: dict = {'alpha': 1.0},
-                 norm: str = 'none', norm_params: tp.Dict[str, tp.Any] = {}, kernel_size: int = 7,
-                 last_kernel_size: int = 7, residual_kernel_size: int = 3, dilation_base: int = 2, causal: bool = False,
-                 pad_mode: str = 'reflect', true_skip: bool = True, compress: int = 2, lstm: int = 0,
-                 disable_norm_outer_blocks: int = 0):
+
+    def __init__(
+        self,
+        channels: int = 1,
+        dimension: int = 128,
+        n_filters: int = 32,
+        n_residual_layers: int = 3,
+        ratios: tp.List[int] = [8, 5, 4, 2],
+        activation: str = "ELU",
+        activation_params: dict = {"alpha": 1.0},
+        norm: str = "none",
+        norm_params: tp.Dict[str, tp.Any] = {},
+        kernel_size: int = 7,
+        last_kernel_size: int = 7,
+        residual_kernel_size: int = 3,
+        dilation_base: int = 2,
+        causal: bool = False,
+        pad_mode: str = "reflect",
+        true_skip: bool = True,
+        compress: int = 2,
+        lstm: int = 0,
+        disable_norm_outer_blocks: int = 0,
+    ):
         super().__init__()
         self.channels = channels
         self.dimension = dimension
@@ -478,36 +609,61 @@ class SEANetEncoder(nn.Module):
         self.hop_length = np.prod(self.ratios)
         self.n_blocks = len(self.ratios) + 2  # first and last conv + residual blocks
         self.disable_norm_outer_blocks = disable_norm_outer_blocks
-        assert self.disable_norm_outer_blocks >= 0 and self.disable_norm_outer_blocks <= self.n_blocks, \
-            "Number of blocks for which to disable norm is invalid." \
+        assert (
+            self.disable_norm_outer_blocks >= 0
+            and self.disable_norm_outer_blocks <= self.n_blocks
+        ), (
+            "Number of blocks for which to disable norm is invalid."
             "It should be lower or equal to the actual number of blocks in the network and greater or equal to 0."
+        )
 
         act = getattr(nn, activation)
         mult = 1
         model: tp.List[nn.Module] = [
-            StreamableConv1d(channels, mult * n_filters, kernel_size,
-                             norm='none' if self.disable_norm_outer_blocks >= 1 else norm,
-                             norm_kwargs=norm_params, causal=causal, pad_mode=pad_mode)
+            StreamableConv1d(
+                channels,
+                mult * n_filters,
+                kernel_size,
+                norm="none" if self.disable_norm_outer_blocks >= 1 else norm,
+                norm_kwargs=norm_params,
+                causal=causal,
+                pad_mode=pad_mode,
+            )
         ]
         # Downsample to raw audio scale
         for i, ratio in enumerate(self.ratios):
-            block_norm = 'none' if self.disable_norm_outer_blocks >= i + 2 else norm
+            block_norm = "none" if self.disable_norm_outer_blocks >= i + 2 else norm
             # Add residual layers
             for j in range(n_residual_layers):
                 model += [
-                    SEANetResnetBlock(mult * n_filters, kernel_sizes=[residual_kernel_size, 1],
-                                      dilations=[dilation_base ** j, 1],
-                                      norm=block_norm, norm_params=norm_params,
-                                      activation=activation, activation_params=activation_params,
-                                      causal=causal, pad_mode=pad_mode, compress=compress, true_skip=true_skip)]
+                    SEANetResnetBlock(
+                        mult * n_filters,
+                        kernel_sizes=[residual_kernel_size, 1],
+                        dilations=[dilation_base**j, 1],
+                        norm=block_norm,
+                        norm_params=norm_params,
+                        activation=activation,
+                        activation_params=activation_params,
+                        causal=causal,
+                        pad_mode=pad_mode,
+                        compress=compress,
+                        true_skip=true_skip,
+                    )
+                ]
 
             # Add downsampling layers
             model += [
                 act(**activation_params),
-                StreamableConv1d(mult * n_filters, mult * n_filters * 2,
-                                 kernel_size=ratio * 2, stride=ratio,
-                                 norm=block_norm, norm_kwargs=norm_params,
-                                 causal=causal, pad_mode=pad_mode),
+                StreamableConv1d(
+                    mult * n_filters,
+                    mult * n_filters * 2,
+                    kernel_size=ratio * 2,
+                    stride=ratio,
+                    norm=block_norm,
+                    norm_kwargs=norm_params,
+                    causal=causal,
+                    pad_mode=pad_mode,
+                ),
             ]
             mult *= 2
 
@@ -516,9 +672,17 @@ class SEANetEncoder(nn.Module):
 
         model += [
             act(**activation_params),
-            StreamableConv1d(mult * n_filters, dimension, last_kernel_size,
-                             norm='none' if self.disable_norm_outer_blocks == self.n_blocks else norm,
-                             norm_kwargs=norm_params, causal=causal, pad_mode=pad_mode)
+            StreamableConv1d(
+                mult * n_filters,
+                dimension,
+                last_kernel_size,
+                norm=(
+                    "none" if self.disable_norm_outer_blocks == self.n_blocks else norm
+                ),
+                norm_kwargs=norm_params,
+                causal=causal,
+                pad_mode=pad_mode,
+            ),
         ]
 
         self.model = nn.Sequential(*model)
@@ -557,13 +721,32 @@ class SEANetDecoder(nn.Module):
         trim_right_ratio (float): Ratio for trimming at the right of the transposed convolution under the causal setup.
             If equal to 1.0, it means that all the trimming is done at the right.
     """
-    def __init__(self, channels: int = 1, dimension: int = 128, n_filters: int = 32, n_residual_layers: int = 3,
-                 ratios: tp.List[int] = [8, 5, 4, 2], activation: str = 'ELU', activation_params: dict = {'alpha': 1.0},
-                 final_activation: tp.Optional[str] = None, final_activation_params: tp.Optional[dict] = None,
-                 norm: str = 'none', norm_params: tp.Dict[str, tp.Any] = {}, kernel_size: int = 7,
-                 last_kernel_size: int = 7, residual_kernel_size: int = 3, dilation_base: int = 2, causal: bool = False,
-                 pad_mode: str = 'reflect', true_skip: bool = True, compress: int = 2, lstm: int = 0,
-                 disable_norm_outer_blocks: int = 0, trim_right_ratio: float = 1.0):
+
+    def __init__(
+        self,
+        channels: int = 1,
+        dimension: int = 128,
+        n_filters: int = 32,
+        n_residual_layers: int = 3,
+        ratios: tp.List[int] = [8, 5, 4, 2],
+        activation: str = "ELU",
+        activation_params: dict = {"alpha": 1.0},
+        final_activation: tp.Optional[str] = None,
+        final_activation_params: tp.Optional[dict] = None,
+        norm: str = "none",
+        norm_params: tp.Dict[str, tp.Any] = {},
+        kernel_size: int = 7,
+        last_kernel_size: int = 7,
+        residual_kernel_size: int = 3,
+        dilation_base: int = 2,
+        causal: bool = False,
+        pad_mode: str = "reflect",
+        true_skip: bool = True,
+        compress: int = 2,
+        lstm: int = 0,
+        disable_norm_outer_blocks: int = 0,
+        trim_right_ratio: float = 1.0,
+    ):
         super().__init__()
         self.dimension = dimension
         self.channels = channels
@@ -574,16 +757,28 @@ class SEANetDecoder(nn.Module):
         self.hop_length = np.prod(self.ratios)
         self.n_blocks = len(self.ratios) + 2  # first and last conv + residual blocks
         self.disable_norm_outer_blocks = disable_norm_outer_blocks
-        assert self.disable_norm_outer_blocks >= 0 and self.disable_norm_outer_blocks <= self.n_blocks, \
-            "Number of blocks for which to disable norm is invalid." \
+        assert (
+            self.disable_norm_outer_blocks >= 0
+            and self.disable_norm_outer_blocks <= self.n_blocks
+        ), (
+            "Number of blocks for which to disable norm is invalid."
             "It should be lower or equal to the actual number of blocks in the network and greater or equal to 0."
+        )
 
         act = getattr(nn, activation)
         mult = int(2 ** len(self.ratios))
         model: tp.List[nn.Module] = [
-            StreamableConv1d(dimension, mult * n_filters, kernel_size,
-                             norm='none' if self.disable_norm_outer_blocks == self.n_blocks else norm,
-                             norm_kwargs=norm_params, causal=causal, pad_mode=pad_mode)
+            StreamableConv1d(
+                dimension,
+                mult * n_filters,
+                kernel_size,
+                norm=(
+                    "none" if self.disable_norm_outer_blocks == self.n_blocks else norm
+                ),
+                norm_kwargs=norm_params,
+                causal=causal,
+                pad_mode=pad_mode,
+            )
         ]
 
         if lstm:
@@ -591,40 +786,63 @@ class SEANetDecoder(nn.Module):
 
         # Upsample to raw audio scale
         for i, ratio in enumerate(self.ratios):
-            block_norm = 'none' if self.disable_norm_outer_blocks >= self.n_blocks - (i + 1) else norm
+            block_norm = (
+                "none"
+                if self.disable_norm_outer_blocks >= self.n_blocks - (i + 1)
+                else norm
+            )
             # Add upsampling layers
             model += [
                 act(**activation_params),
-                StreamableConvTranspose1d(mult * n_filters, mult * n_filters // 2,
-                                          kernel_size=ratio * 2, stride=ratio,
-                                          norm=block_norm, norm_kwargs=norm_params,
-                                          causal=causal, trim_right_ratio=trim_right_ratio),
+                StreamableConvTranspose1d(
+                    mult * n_filters,
+                    mult * n_filters // 2,
+                    kernel_size=ratio * 2,
+                    stride=ratio,
+                    norm=block_norm,
+                    norm_kwargs=norm_params,
+                    causal=causal,
+                    trim_right_ratio=trim_right_ratio,
+                ),
             ]
             # Add residual layers
             for j in range(n_residual_layers):
                 model += [
-                    SEANetResnetBlock(mult * n_filters // 2, kernel_sizes=[residual_kernel_size, 1],
-                                      dilations=[dilation_base ** j, 1],
-                                      activation=activation, activation_params=activation_params,
-                                      norm=block_norm, norm_params=norm_params, causal=causal,
-                                      pad_mode=pad_mode, compress=compress, true_skip=true_skip)]
+                    SEANetResnetBlock(
+                        mult * n_filters // 2,
+                        kernel_sizes=[residual_kernel_size, 1],
+                        dilations=[dilation_base**j, 1],
+                        activation=activation,
+                        activation_params=activation_params,
+                        norm=block_norm,
+                        norm_params=norm_params,
+                        causal=causal,
+                        pad_mode=pad_mode,
+                        compress=compress,
+                        true_skip=true_skip,
+                    )
+                ]
 
             mult //= 2
 
         # Add final layers
         model += [
             act(**activation_params),
-            StreamableConv1d(n_filters, channels, last_kernel_size,
-                             norm='none' if self.disable_norm_outer_blocks >= 1 else norm,
-                             norm_kwargs=norm_params, causal=causal, pad_mode=pad_mode)
+            StreamableConv1d(
+                n_filters,
+                channels,
+                last_kernel_size,
+                norm="none" if self.disable_norm_outer_blocks >= 1 else norm,
+                norm_kwargs=norm_params,
+                causal=causal,
+                pad_mode=pad_mode,
+            ),
         ]
         # Add optional final activation to decoder (eg. tanh)
         if final_activation is not None:
             final_act = getattr(nn, final_activation)
             final_activation_params = final_activation_params or {}
-            model += [
-                final_act(**final_activation_params)
-            ]
+            model += [final_act(**final_activation_params)]
         self.model = nn.Sequential(*model)
 
     def forward(self, z):
@@ -675,10 +893,8 @@ def kmeans(samples, num_clusters: int, num_iters: int = 10):
     means = sample_vectors(samples, num_clusters)
 
     for _ in range(num_iters):
-        diffs = rearrange(samples, "n d -> n () d") - rearrange(
-            means, "c d -> () c d"
-        )
-        dists = -(diffs ** 2).sum(dim=-1)
+        diffs = rearrange(samples, "n d -> n () d") - rearrange(means, "c d -> () c d")
+        dists = -(diffs**2).sum(dim=-1)
 
         buckets = dists.max(dim=-1).indices
         bins = torch.bincount(buckets, minlength=num_clusters)
@@ -700,7 +916,7 @@ def orthogonal_loss_fn(t):
     normed_codes = l2norm(t)
     identity = torch.eye(n, device=t.device)
     cosine_sim = einsum("i d, j d -> i j", normed_codes, normed_codes)
-    return ((cosine_sim - identity) ** 2).sum() / (n ** 2)
+    return ((cosine_sim - identity) ** 2).sum() / (n**2)
 
 
 class EuclideanCodebook(nn.Module):
@@ -719,6 +935,7 @@ class EuclideanCodebook(nn.Module):
             that have an exponential moving average cluster size less than the specified threshold with
             randomly selected vector from the current batch.
     """
+
     def __init__(
         self,
         dim: int,
@@ -731,7 +948,9 @@ class EuclideanCodebook(nn.Module):
     ):
         super().__init__()
         self.decay = decay
-        init_fn: tp.Union[tp.Callable[..., torch.Tensor], tp.Any] = uniform_init if not kmeans_init else torch.zeros
+        init_fn: tp.Union[tp.Callable[..., torch.Tensor], tp.Any] = (
+            uniform_init if not kmeans_init else torch.zeros
+        )
         embed = init_fn(codebook_size, dim)
 
         self.codebook_size = codebook_size
@@ -862,6 +1081,7 @@ class VectorQuantization(nn.Module):
             that have an exponential moving average cluster size less than the specified threshold with
             randomly selected vector from the current batch.
     """
+
     def __init__(
         self,
         dim: int,
@@ -873,7 +1093,7 @@ class VectorQuantization(nn.Module):
         kmeans_iters: int = 10,
         threshold_ema_dead_code: int = 2,
         channels_last: bool = False,
-        commitment_weight: float = 1.,
+        commitment_weight: float = 1.0,
         orthogonal_reg_weight: float = 0.0,
         orthogonal_reg_active_codes_only: bool = False,
         orthogonal_reg_max_codes: tp.Optional[int] = None,
@@ -882,8 +1102,12 @@ class VectorQuantization(nn.Module):
         _codebook_dim: int = default(codebook_dim, dim)
 
         requires_projection = _codebook_dim != dim
-        self.project_in = (nn.Linear(dim, _codebook_dim) if requires_projection else nn.Identity())
-        self.project_out = (nn.Linear(_codebook_dim, dim) if requires_projection else nn.Identity())
+        self.project_in = (
+            nn.Linear(dim, _codebook_dim) if requires_projection else nn.Identity()
+        )
+        self.project_out = (
+            nn.Linear(_codebook_dim, dim) if requires_projection else nn.Identity()
+        )
 
         self.epsilon = epsilon
         self.commitment_weight = commitment_weight
@@ -892,10 +1116,15 @@ class VectorQuantization(nn.Module):
         self.orthogonal_reg_active_codes_only = orthogonal_reg_active_codes_only
         self.orthogonal_reg_max_codes = orthogonal_reg_max_codes
 
-        self._codebook = EuclideanCodebook(dim=_codebook_dim, codebook_size=codebook_size,
-                                           kmeans_init=kmeans_init, kmeans_iters=kmeans_iters,
-                                           decay=decay, epsilon=epsilon,
-                                           threshold_ema_dead_code=threshold_ema_dead_code)
+        self._codebook = EuclideanCodebook(
+            dim=_codebook_dim,
+            codebook_size=codebook_size,
+            kmeans_init=kmeans_init,
+            kmeans_iters=kmeans_iters,
+            decay=decay,
+            epsilon=epsilon,
+            threshold_ema_dead_code=threshold_ema_dead_code,
+        )
         self.codebook_size = codebook_size
 
         self.channels_last = channels_last
@@ -956,8 +1185,13 @@ class VectorQuantization(nn.Module):
                     codebook = codebook[unique_code_ids]
 
                 num_codes = codebook.shape[0]
-                if exists(self.orthogonal_reg_max_codes) and num_codes > self.orthogonal_reg_max_codes:
-                    rand_ids = torch.randperm(num_codes, device=device)[:self.orthogonal_reg_max_codes]
+                if (
+                    exists(self.orthogonal_reg_max_codes)
+                    and num_codes > self.orthogonal_reg_max_codes
+                ):
+                    rand_ids = torch.randperm(num_codes, device=device)[
+                        : self.orthogonal_reg_max_codes
+                    ]
                     codebook = codebook[rand_ids]
 
                 orthogonal_reg_loss = orthogonal_loss_fn(codebook)
@@ -974,17 +1208,20 @@ class ResidualVectorQuantization(nn.Module):
 
     Follows Algorithm 1. in https://arxiv.org/pdf/2107.03312.pdf
     """
+
     def __init__(self, *, num_quantizers, **kwargs):
         super().__init__()
-        codebook_size = kwargs.pop('codebook_size', None)
+        codebook_size = kwargs.pop("codebook_size", None)
         if codebook_size is None:
             raise ValueError("codebook_size must be provided in kwargs")
         if type(codebook_size) != list:
             codebook_size = [codebook_size] * num_quantizers
         self.layers = nn.ModuleList(
-            [VectorQuantization(codebook_size=cur_codebook_size, **kwargs) for _,cur_codebook_size in zip(range(num_quantizers), codebook_size)]
+            [
+                VectorQuantization(codebook_size=cur_codebook_size, **kwargs)
+                for _, cur_codebook_size in zip(range(num_quantizers), codebook_size)
+            ]
         )
-            
 
         # self.layers = nn.ModuleList(
         #     [VectorQuantization(**kwargs) for _ in range(num_quantizers)]
@@ -1058,6 +1295,7 @@ class ResidualVectorQuantizer(BaseQuantizer):
         orthogonal_reg_max_codes (optional int): Maximum number of codes to consider.
             for orthogonal regularization.
     """
+
     def __init__(
         self,
         dimension: int = 256,
@@ -1096,7 +1334,7 @@ class ResidualVectorQuantizer(BaseQuantizer):
             orthogonal_reg_weight=self.orthogonal_reg_weight,
             orthogonal_reg_active_codes_only=self.orthogonal_reg_active_codes_only,
             orthogonal_reg_max_codes=self.orthogonal_reg_max_codes,
-            channels_last=False
+            channels_last=False,
         )
 
     def forward(self, x: torch.Tensor, frame_rate: int):
@@ -1144,15 +1382,18 @@ class ResidualVectorQuantizer(BaseQuantizer):
         assert n > 0 and n <= self.max_n_q
         self.n_q = n
 
+
 class DummyQuantizer(BaseQuantizer):
-    """Fake quantizer that actually does not perform any quantization.
-    """
+    """Fake quantizer that actually does not perform any quantization."""
+
     def __init__(self):
         super().__init__()
 
     def forward(self, x: torch.Tensor, frame_rate: int):
         q = x.unsqueeze(1)
-        return QuantizedResult(x, q, torch.tensor(q.numel() * 32 * frame_rate / 1000 / len(x)).to(x))
+        return QuantizedResult(
+            x, q, torch.tensor(q.numel() * 32 * frame_rate / 1000 / len(x)).to(x)
+        )
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         """Encode a given input tensor with the specified sample rate at the given bandwidth.
@@ -1180,7 +1421,9 @@ class DummyQuantizer(BaseQuantizer):
 
     def set_num_codebooks(self, n: int):
         """Set the number of active codebooks."""
-        raise AttributeError("Cannot override the number of codebooks for the dummy quantizer")
+        raise AttributeError(
+            "Cannot override the number of codebooks for the dummy quantizer"
+        )
 
 
 class EncodecModel(CompressionModel):
@@ -1196,21 +1439,24 @@ class EncodecModel(CompressionModel):
         causal (bool): Whether to use a causal version of the model.
         renormalize (bool): Whether to renormalize the audio before running the model.
     """
+
     # we need assignment to override the property in the abstract class,
     # I couldn't find a better way...
     frame_rate: float = 0
     sample_rate: int = 0
     channels: int = 0
 
-    def __init__(self,
-                 encoder: nn.Module,
-                 decoder: nn.Module,
-                 quantizer: BaseQuantizer,
-                 frame_rate: int,
-                 sample_rate: int,
-                 channels: int,
-                 causal: bool = False,
-                 renormalize: bool = False):
+    def __init__(
+        self,
+        encoder: nn.Module,
+        decoder: nn.Module,
+        quantizer: BaseQuantizer,
+        frame_rate: int,
+        sample_rate: int,
+        channels: int,
+        causal: bool = False,
+        renormalize: bool = False,
+    ):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -1223,7 +1469,7 @@ class EncodecModel(CompressionModel):
         if self.causal:
             # we force disabling here to avoid handling linear overlap of segments
             # as supported in original EnCodec codebase.
-            assert not self.renormalize, 'Causal model does not support renormalize'
+            assert not self.renormalize, "Causal model does not support renormalize"
 
     @property
     def total_codebooks(self):
@@ -1244,7 +1490,9 @@ class EncodecModel(CompressionModel):
         """Cardinality of each codebook."""
         return self.quantizer.bins
 
-    def preprocess(self, x: torch.Tensor) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
+    def preprocess(
+        self, x: torch.Tensor
+    ) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
         scale: tp.Optional[torch.Tensor]
         if self.renormalize:
             mono = x.mean(dim=1, keepdim=True)
@@ -1256,9 +1504,9 @@ class EncodecModel(CompressionModel):
             scale = None
         return x, scale
 
-    def postprocess(self,
-                    x: torch.Tensor,
-                    scale: tp.Optional[torch.Tensor] = None) -> torch.Tensor:
+    def postprocess(
+        self, x: torch.Tensor, scale: tp.Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         if scale is not None:
             assert self.renormalize
             x = x * scale.view(-1, 1, 1)
@@ -1285,7 +1533,9 @@ class EncodecModel(CompressionModel):
 
         return q_res
 
-    def encode(self, x: torch.Tensor) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
+    def encode(
+        self, x: torch.Tensor
+    ) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
         """Encode the given input tensor to quantized representation along with scale parameter.
 
         Args:
@@ -1322,6 +1572,7 @@ class EncodecModel(CompressionModel):
     def decode_latent(self, codes: torch.Tensor):
         """Decode from the discrete codes to continuous latent space."""
         return self.quantizer.decode(codes)
+
 
 class EncodecModel_encode_only(CompressionModel):
     """Encodec model operating on the raw waveform. Encode only, so no decoder
@@ -1335,20 +1586,23 @@ class EncodecModel_encode_only(CompressionModel):
         causal (bool): Whether to use a causal version of the model.
         renormalize (bool): Whether to renormalize the audio before running the model.
     """
+
     # we need assignment to override the property in the abstract class,
     # I couldn't find a better way...
     frame_rate: float = 0
     sample_rate: int = 0
     channels: int = 0
 
-    def __init__(self,
-                 encoder: nn.Module,
-                 quantizer: BaseQuantizer,
-                 frame_rate: int,
-                 sample_rate: int,
-                 channels: int,
-                 causal: bool = False,
-                 renormalize: bool = False):
+    def __init__(
+        self,
+        encoder: nn.Module,
+        quantizer: BaseQuantizer,
+        frame_rate: int,
+        sample_rate: int,
+        channels: int,
+        causal: bool = False,
+        renormalize: bool = False,
+    ):
         super().__init__()
         self.encoder = encoder
         self.quantizer = quantizer
@@ -1360,7 +1614,7 @@ class EncodecModel_encode_only(CompressionModel):
         if self.causal:
             # we force disabling here to avoid handling linear overlap of segments
             # as supported in original EnCodec codebase.
-            assert not self.renormalize, 'Causal model does not support renormalize'
+            assert not self.renormalize, "Causal model does not support renormalize"
 
     @property
     def total_codebooks(self):
@@ -1381,7 +1635,9 @@ class EncodecModel_encode_only(CompressionModel):
         """Cardinality of each codebook."""
         return self.quantizer.bins
 
-    def preprocess(self, x: torch.Tensor) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
+    def preprocess(
+        self, x: torch.Tensor
+    ) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
         scale: tp.Optional[torch.Tensor]
         if self.renormalize:
             mono = x.mean(dim=1, keepdim=True)
@@ -1393,9 +1649,9 @@ class EncodecModel_encode_only(CompressionModel):
             scale = None
         return x, scale
 
-    def postprocess(self,
-                    x: torch.Tensor,
-                    scale: tp.Optional[torch.Tensor] = None) -> torch.Tensor:
+    def postprocess(
+        self, x: torch.Tensor, scale: tp.Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         if scale is not None:
             assert self.renormalize
             x = x * scale.view(-1, 1, 1)
@@ -1422,7 +1678,9 @@ class EncodecModel_encode_only(CompressionModel):
 
         return q_res
 
-    def encode(self, x: torch.Tensor) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
+    def encode(
+        self, x: torch.Tensor
+    ) -> tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]:
         """Encode the given input tensor to quantized representation along with scale parameter.
 
         Args:
@@ -1462,21 +1720,22 @@ class EncodecModel_encode_only(CompressionModel):
         raise NotImplementedError("Decode is not supported for encode only model")
         return self.quantizer.decode(codes)
 
-def get_quantizer(quantizer: str, cfg: omegaconf.DictConfig, dimension: int) -> BaseQuantizer:
-    klass = {
-        'no_quant': DummyQuantizer,
-        'rvq': ResidualVectorQuantizer
-    }[quantizer]
+
+def get_quantizer(
+    quantizer: str, cfg: omegaconf.DictConfig, dimension: int
+) -> BaseQuantizer:
+    klass = {"no_quant": DummyQuantizer, "rvq": ResidualVectorQuantizer}[quantizer]
     kwargs = dict_from_config(getattr(cfg, quantizer))
-    if quantizer != 'no_quant':
-        kwargs['dimension'] = dimension
+    if quantizer != "no_quant":
+        kwargs["dimension"] = dimension
     return klass(**kwargs)
 
+
 def get_encodec_autoencoder(encoder_name: str, cfg: omegaconf.DictConfig):
-    if encoder_name == 'seanet':
-        kwargs = dict_from_config(getattr(cfg, 'seanet'))
-        encoder_override_kwargs = kwargs.pop('encoder')
-        decoder_override_kwargs = kwargs.pop('decoder')
+    if encoder_name == "seanet":
+        kwargs = dict_from_config(getattr(cfg, "seanet"))
+        encoder_override_kwargs = kwargs.pop("encoder")
+        decoder_override_kwargs = kwargs.pop("decoder")
         encoder_kwargs = {**kwargs, **encoder_override_kwargs}
         decoder_kwargs = {**kwargs, **decoder_override_kwargs}
         encoder = SEANetEncoder(**encoder_kwargs)
@@ -1489,56 +1748,85 @@ def get_encodec_autoencoder(encoder_name: str, cfg: omegaconf.DictConfig):
 def get_compression_model(ckpt_fn, encode_only=False, device="cpu") -> CompressionModel:
     """Instantiate a compression model."""
     if device == None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    state = torch.load(ckpt_fn, map_location='cpu')
-    cfg = state['xp.cfg']
+        device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    state = torch.load(ckpt_fn, map_location="cpu")
+    cfg = state["xp.cfg"]
     cfg.device = str(device)
-    weights = state['best_state']['model']
-    assert cfg.compression_model == 'encodec', "Only Encodec model is supported for now."
+    weights = state["best_state"]["model"]
+    assert (
+        cfg.compression_model == "encodec"
+    ), "Only Encodec model is supported for now."
     if encode_only:
         all_keys = list(weights.keys())
         for key in all_keys:
-            if key.startswith('decoder'):
+            if key.startswith("decoder"):
                 del weights[key]
-        kwargs = dict_from_config(getattr(cfg, 'encodec'))
-        encoder_name = kwargs.pop('autoencoder')
-        quantizer_name = kwargs.pop('quantizer')
+        kwargs = dict_from_config(getattr(cfg, "encodec"))
+        encoder_name = kwargs.pop("autoencoder")
+        quantizer_name = kwargs.pop("quantizer")
         encoder, _ = get_encodec_autoencoder(encoder_name, cfg)
         quantizer = get_quantizer(quantizer_name, cfg, encoder.dimension)
-        frame_rate = kwargs['sample_rate'] // encoder.hop_length
-        renormalize = kwargs.pop('renormalize', False)
+        frame_rate = kwargs["sample_rate"] // encoder.hop_length
+        renormalize = kwargs.pop("renormalize", False)
         # deprecated params
-        kwargs.pop('renorm', None)
-        compression_model = EncodecModel_encode_only(encoder, quantizer,
-                            frame_rate=frame_rate, renormalize=renormalize, **kwargs).to(cfg.device)
-        assert compression_model.sample_rate == cfg.sample_rate, "Compression model sample rate should match"
+        kwargs.pop("renorm", None)
+        compression_model = EncodecModel_encode_only(
+            encoder, quantizer, frame_rate=frame_rate, renormalize=renormalize, **kwargs
+        ).to(cfg.device)
+        assert (
+            compression_model.sample_rate == cfg.sample_rate
+        ), "Compression model sample rate should match"
         compression_model.load_state_dict(weights)
         compression_model.eval()
         return compression_model
 
     else:
-        kwargs = dict_from_config(getattr(cfg, 'encodec'))
-        encoder_name = kwargs.pop('autoencoder')
-        quantizer_name = kwargs.pop('quantizer')
+        kwargs = dict_from_config(getattr(cfg, "encodec"))
+        encoder_name = kwargs.pop("autoencoder")
+        quantizer_name = kwargs.pop("quantizer")
         encoder, decoder = get_encodec_autoencoder(encoder_name, cfg)
         quantizer = get_quantizer(quantizer_name, cfg, encoder.dimension)
-        frame_rate = kwargs['sample_rate'] // encoder.hop_length
-        renormalize = kwargs.pop('renormalize', False)
+        frame_rate = kwargs["sample_rate"] // encoder.hop_length
+        renormalize = kwargs.pop("renormalize", False)
         # deprecated params
-        kwargs.pop('renorm', None)
-        compression_model = EncodecModel(encoder, decoder, quantizer,
-                            frame_rate=frame_rate, renormalize=renormalize, **kwargs).to(cfg.device)
-        assert compression_model.sample_rate == cfg.sample_rate, "Compression model sample rate should match"
+        kwargs.pop("renorm", None)
+        compression_model = EncodecModel(
+            encoder,
+            decoder,
+            quantizer,
+            frame_rate=frame_rate,
+            renormalize=renormalize,
+            **kwargs,
+        ).to(cfg.device)
+        assert (
+            compression_model.sample_rate == cfg.sample_rate
+        ), "Compression model sample rate should match"
         compression_model.load_state_dict(weights)
         compression_model.eval()
         return compression_model
 
+
 if __name__ == "__main__":
     import torchaudio
+
     ckpt_fn = "/home/pyp/BoostedVoiceEditor/pretrained/encodec_6f79c6a8.th"
-    audio_in_fns = ["/home/pyp/BoostedVoiceEditor/demo/pam.wav", "/home/pyp/BoostedVoiceEditor/demo/ray.wav", "/home/pyp/BoostedVoiceEditor/demo/84_121550_000074_000000.wav", "/home/pyp/BoostedVoiceEditor/demo/caribbean.wav", "/home/pyp/BoostedVoiceEditor/demo/bible.wav", "/home/pyp/BoostedVoiceEditor/demo/miley.wav"]
-    audio_out_fns = ["/home/pyp/BoostedVoiceEditor/demo/pam_encodecTest.wav", "/home/pyp/BoostedVoiceEditor/demo/ray_encodecTest.wav", "/home/pyp/BoostedVoiceEditor/demo/84_121550_000074_000000_encodecTest.wav", "/home/pyp/BoostedVoiceEditor/demo/caribbean_encodecTest.wav", "/home/pyp/BoostedVoiceEditor/demo/bible_encodecTest.wav", "/home/pyp/BoostedVoiceEditor/demo/miley_encodecTest.wav"]
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    audio_in_fns = [
+        "/home/pyp/BoostedVoiceEditor/demo/pam.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/ray.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/84_121550_000074_000000.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/caribbean.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/bible.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/miley.wav",
+    ]
+    audio_out_fns = [
+        "/home/pyp/BoostedVoiceEditor/demo/pam_encodecTest.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/ray_encodecTest.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/84_121550_000074_000000_encodecTest.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/caribbean_encodecTest.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/bible_encodecTest.wav",
+        "/home/pyp/BoostedVoiceEditor/demo/miley_encodecTest.wav",
+    ]
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     model = get_compression_model(ckpt_fn, device=device)
 
     for audio_in_fn, audio_out_fn in zip(audio_in_fns, audio_out_fns):

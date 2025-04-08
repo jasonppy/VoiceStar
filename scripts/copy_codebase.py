@@ -1,7 +1,7 @@
-
 import os
 import shutil
 import fnmatch
+
 
 def parse_gitignore(gitignore_path):
     """Parse a .gitignore file and return a list of patterns."""
@@ -16,6 +16,7 @@ def parse_gitignore(gitignore_path):
             patterns.append(line)
     return patterns
 
+
 def file_matches_patterns(file_path, patterns):
     """Check if a file matches any of the patterns in .gitignore."""
     for pattern in patterns:
@@ -23,8 +24,9 @@ def file_matches_patterns(file_path, patterns):
             return True
     return False
 
+
 def copy_codebase(src, dst, max_size_mb=5, gitignore_path=None):
-    """ Copy files from src to dst, skipping files larger than max_size_mb and matching .gitignore patterns. """
+    """Copy files from src to dst, skipping files larger than max_size_mb and matching .gitignore patterns."""
     if gitignore_path and os.path.exists(gitignore_path):
         patterns = parse_gitignore(gitignore_path)
     else:
@@ -49,7 +51,6 @@ def copy_codebase(src, dst, max_size_mb=5, gitignore_path=None):
             if os.path.getsize(file_path) > max_size_mb * 1024 * 1024:
                 print(f"Skipping {file_path} because it's larger than {max_size_mb}MB")
                 continue
-
 
             # Make sure the destination directory exists
             os.makedirs(os.path.dirname(dst_path), exist_ok=True)

@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Pattern, Union
 import numpy as np
 import torch
 import torchaudio
+
 # from encodec import EncodecModel
 # from encodec.utils import convert_audio
 # from lhotse.features import FeatureExtractor
@@ -62,9 +63,7 @@ class PypinyinBackend:
             phones = []
             if self.backend == "pypinyin":
                 for n, py in enumerate(
-                    pinyin(
-                        _text, style=Style.TONE3, neutral_tone_with_five=True
-                    )
+                    pinyin(_text, style=Style.TONE3, neutral_tone_with_five=True)
                 ):
                     if all([c in self.punctuation_marks for c in py[0]]):
                         if len(phones):
@@ -76,9 +75,7 @@ class PypinyinBackend:
                         phones.extend([py[0], separator.syllable])
             elif self.backend == "pypinyin_initials_finals":
                 for n, py in enumerate(
-                    pinyin(
-                        _text, style=Style.TONE3, neutral_tone_with_five=True
-                    )
+                    pinyin(_text, style=Style.TONE3, neutral_tone_with_five=True)
                 ):
                     if all([c in self.punctuation_marks for c in py[0]]):
                         if len(phones):
@@ -89,10 +86,7 @@ class PypinyinBackend:
                         if py[0][-1].isalnum():
                             initial = get_initials(py[0], strict=False)
                             if py[0][-1].isdigit():
-                                final = (
-                                    get_finals(py[0][:-1], strict=False)
-                                    + py[0][-1]
-                                )
+                                final = get_finals(py[0][:-1], strict=False) + py[0][-1]
                             else:
                                 final = get_finals(py[0], strict=False)
                             phones.extend(
@@ -155,8 +149,7 @@ class TextTokenizer:
             # "ɐ    m|iː|n?"    ɹ|ɪ|z|ɜː|v; h|ɪ|z.
             pp = re.findall(r"\w+|[^\w\s]", word, re.UNICODE)
             fields.extend(
-                [p for p in pp if p != self.separator.phone]
-                + [self.separator.word]
+                [p for p in pp if p != self.separator.phone] + [self.separator.word]
             )
         assert len("".join(fields[:-1])) == len(phonemized) - phonemized.count(
             self.separator.phone
@@ -182,6 +175,7 @@ def remove_encodec_weight_norm(model):
     from encodec.modules import SConv1d
     from encodec.modules.seanet import SConvTranspose1d, SEANetResnetBlock
     from torch.nn.utils import remove_weight_norm
+
     encoder = model.encoder.model
     for key in encoder._modules:
         if isinstance(encoder._modules[key], SEANetResnetBlock):
@@ -326,7 +320,7 @@ def remove_encodec_weight_norm(model):
 #         #     ret = self.codec.cpu().decode([(frames[0][0].cpu(),None)])[0].to(self._device)
 #         #     self.codec.to(self._device)
 #         #     return [ret]
-        
+
 # def tokenize_audio(tokenizer: AudioTokenizer, audio_path: str, offset = -1, num_frames=-1):
 #     # Load and pre-process the audio waveform
 #     if offset != -1 and num_frames!=-1:

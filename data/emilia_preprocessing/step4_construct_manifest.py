@@ -12,16 +12,21 @@ import tqdm
 from multiprocessing import Pool
 import glob, os
 from collections import defaultdict
+
+
 def write_jsonl(data, fn):
     with open(fn, "w") as file:
         for entry in data:
             file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 def read_jsonl(file_path):
     cur_data = []
-    with open(file_path, 'r', encoding='utf-8-sig') as file:
+    with open(file_path, "r", encoding="utf-8-sig") as file:
         for line in file:
             cur_data.append(json.loads(line.strip()))
     return cur_data
+
 
 def repetition_found(text, length=2, tolerance=10):
     pattern_count = defaultdict(int)
@@ -32,7 +37,6 @@ def repetition_found(text, length=2, tolerance=10):
         if count > tolerance:
             return True
     return False
-
 
 
 out_en = {
@@ -114,6 +118,7 @@ en_filters = ["ا", "い", "て"]
 
 from multiprocessing import Pool
 
+
 def process_meta_item(item, root, sub_root, audio_folder, audio_ext, text_ext):
     global filtered_duration, filtered_count, total_duration, total_count
     # Data filtering following Yushen's approach
@@ -123,13 +128,15 @@ def process_meta_item(item, root, sub_root, audio_folder, audio_ext, text_ext):
         or repetition_found(item["text"], length=4)
     ):
         return None, item["duration"], 1, 0, 0, (None, None)  # Return filtered results
-    
+
     # Trim leading space from text if exists
     if item["text"].startswith(" "):
         item["text"] = item["text"][1:]
-    
+
     # write text to text file
-    text_fn = os.path.join(root, sub_root, audio_folder, item["wav"].replace(audio_ext, text_ext))
+    text_fn = os.path.join(
+        root, sub_root, audio_folder, item["wav"].replace(audio_ext, text_ext)
+    )
     os.makedirs(os.path.dirname(text_fn), exist_ok=True)
     with open(text_fn, "w") as f:
         f.write(item["text"])
@@ -141,24 +148,29 @@ def process_meta_item(item, root, sub_root, audio_folder, audio_ext, text_ext):
         0,
         item["duration"],
         1,
-        (item['speaker'], item)
+        (item["speaker"], item),
     )  # Return processed results
 
 
-def parallel_process_meta(meta, root, sub_root, audio_folder, num_workers, audio_ext, text_ext):
+def parallel_process_meta(
+    meta, root, sub_root, audio_folder, num_workers, audio_ext, text_ext
+):
     with Pool(num_workers) as pool:
         results = pool.starmap(
             process_meta_item,
-            [(item, root, sub_root, audio_folder, audio_ext, text_ext) for item in meta],
+            [
+                (item, root, sub_root, audio_folder, audio_ext, text_ext)
+                for item in meta
+            ],
         )
-    
+
     processed_items = []
     spkitem = []
     filtered_duration = 0
     filtered_count = 0
     total_duration = 0
     total_count = 0
-    
+
     for result in results:
         if result[0]:  # If the item was processed
             processed_items.append(result[0])
@@ -167,8 +179,15 @@ def parallel_process_meta(meta, root, sub_root, audio_folder, num_workers, audio
         total_duration += result[3]
         total_count += result[4]
         spkitem.append(result[5])
-    
-    return processed_items, filtered_duration, filtered_count, total_duration, total_count, spkitem
+
+    return (
+        processed_items,
+        filtered_duration,
+        filtered_count,
+        total_duration,
+        total_count,
+        spkitem,
+    )
 
 
 def main(
@@ -189,7 +208,7 @@ def main(
     ]
     print(f"found {len(all_fns)} untarred segments")
     print(f"{all_fns[:3]}")
-    
+
     res = []
     total_duration = 0
     total_count = 0
@@ -200,12 +219,12 @@ def main(
         spk2info = defaultdict(list)
         metafn = os.path.join(root, "EN", os.path.basename(fn) + ".jsonl")
         meta = read_jsonl(metafn)
-        
+
         # Parallel process metadata
         processed_items, fd, fc, td, tc, spkitem = parallel_process_meta(
             meta, root, sub_root, audio_folder, num_workers, audio_ext, text_ext
         )
-        
+
         # Aggregate results
         res.extend(processed_items)
         filtered_duration += fd
@@ -216,7 +235,7 @@ def main(
         for spk, item in spkitem:
             if spk:
                 spk2info[spk].append(item)
-        
+
         # Save neighbor files
         for spk in spk2info:
             for item in spk2info[spk]:
@@ -227,11 +246,15 @@ def main(
                     item["wav"].replace(audio_ext, text_ext),
                 )
                 os.makedirs(os.path.dirname(neighbor_fn), exist_ok=True)
-                tobe_write = [f"{neighbor_item['wav'].replace(audio_ext, text_ext)}\t0\t{neighbor_item['duration']}\n" for neighbor_item in spk2info[spk] if neighbor_item["wav"] != item["wav"]]
+                tobe_write = [
+                    f"{neighbor_item['wav'].replace(audio_ext, text_ext)}\t0\t{neighbor_item['duration']}\n"
+                    for neighbor_item in spk2info[spk]
+                    if neighbor_item["wav"] != item["wav"]
+                ]
                 if tobe_write:
                     with open(neighbor_fn, "w") as f:
                         f.writelines(tobe_write)
-    
+
     print(
         f"total duration: {total_duration / 3600:.2f} hours, total count: {total_count}"
     )

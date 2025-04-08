@@ -1,6 +1,6 @@
-# we have raw transcript at 
+# we have raw transcript at
 # /data/scratch/pyp/datasets/librilight/preprocessed/audio
-# we have word and ARPA alignment at 
+# we have word and ARPA alignment at
 # /data/scratch/pyp/datasets/librilight/preprocessed/alignment
 
 # we have manifest at /data/scratch/pyp/datasets/librilight/preprocessed/manifest_mimi
@@ -15,12 +15,23 @@ from tokenizer import TextTokenizer, tokenize_text
 
 
 def remove_punctuation(input_string):
-    translator = str.maketrans('', '', string.punctuation)
+    translator = str.maketrans("", "", string.punctuation)
     return input_string.translate(translator)
 
 
-
-def create_alignment(fn, trans_dir, align_dir, audio_ext, trans_ext, arpa_ext, text_tokenizer, use_prob, ipa_alignment_fn, save=False, prompt_dur=30):
+def create_alignment(
+    fn,
+    trans_dir,
+    align_dir,
+    audio_ext,
+    trans_ext,
+    arpa_ext,
+    text_tokenizer,
+    use_prob,
+    ipa_alignment_fn,
+    save=False,
+    prompt_dur=30,
+):
     os.makedirs(os.path.dirname(ipa_alignment_fn), exist_ok=True)
     trans_fn = os.path.join(trans_dir, fn.replace(audio_ext, trans_ext))
     if not os.path.isfile(trans_fn):
@@ -29,13 +40,13 @@ def create_alignment(fn, trans_dir, align_dir, audio_ext, trans_ext, arpa_ext, t
     if not os.path.isfile(align_fn):
         return [], True
     # get raw transcript
-    with open(trans_fn, 'r') as f:
+    with open(trans_fn, "r") as f:
         transcript = f.read().strip()
     raw_word_list = transcript.split(" ")
     # get word alignment
-    with open(align_fn, 'r') as f:
+    with open(align_fn, "r") as f:
         word_alignment = csv.reader(f)
-        word_alignment = [row for row in word_alignment if row[3]=='words']
+        word_alignment = [row for row in word_alignment if row[3] == "words"]
 
     ipa_alignment = []
 
@@ -48,67 +59,83 @@ def create_alignment(fn, trans_dir, align_dir, audio_ext, trans_ext, arpa_ext, t
             # print(f"word from alignment csv: {word}, word from txt: {raw_word}")
             return ipa_alignment, True
         if random.random() < use_prob:
-            cur_words = " ".join(raw_word_list[:j+1])
+            cur_words = " ".join(raw_word_list[: j + 1])
             phn = tokenize_text(text_tokenizer, cur_words)
             if len(phn) == 0:
                 continue
             phn = " ".join(phn)
-            start = 0 # at this point, we always start from the beginning of the sentence
+            start = (
+                0  # at this point, we always start from the beginning of the sentence
+            )
             ipa_alignment.append([start, end, phn])
     if save:
         if ipa_alignment:
-            with open(ipa_alignment_fn, 'w') as f:
+            with open(ipa_alignment_fn, "w") as f:
                 for item in ipa_alignment:
                     f.write(f"{item[0]}\t{item[1]}\t{item[2]}\n")
     else:
         return ipa_alignment, False
 
 
-
 def main(
-    data_root: str = '/data/scratch/pyp/datasets/librilight/preprocessed',
-    audio_ext: str = '.flac',
-    arpa_ext: str = '.csv',
-    trans_ext: str = '.txt',
-    split: str = 'valid',
+    data_root: str = "/data/scratch/pyp/datasets/librilight/preprocessed",
+    audio_ext: str = ".flac",
+    arpa_ext: str = ".csv",
+    trans_ext: str = ".txt",
+    split: str = "valid",
     use_prob: float = 0.5,
-    max_dur: float = 30., # do not consider utterance longer than this
-    prompt_dur: float = 30., # do not consider prompt longer than this
+    max_dur: float = 30.0,  # do not consider utterance longer than this
+    prompt_dur: float = 30.0,  # do not consider prompt longer than this
 ):
     text_tokenizer = TextTokenizer()
-    trans_dir = f'{data_root}/audio'
-    align_dir = f'{data_root}/alignment'
+    trans_dir = f"{data_root}/audio"
+    align_dir = f"{data_root}/alignment"
     manifest_fn = f"{data_root}/manifest_final_encodec/{split}*=*.txt"
     manifest_fns = glob.glob(manifest_fn)
-    target_dir = f'{data_root}/ipa_alignment'
+    target_dir = f"{data_root}/ipa_alignment"
     encodec_sr = 50
     os.makedirs(target_dir, exist_ok=True)
     manifest = []
     for manifest_fn in manifest_fns:
-        with open(manifest_fn, 'r') as f:
+        with open(manifest_fn, "r") as f:
             temp = [l.strip().split("\t") for l in f.readlines()]
-            manifest += [l[0] + audio_ext for l in temp if float(l[1])/encodec_sr < max_dur]
+            manifest += [
+                l[0] + audio_ext for l in temp if float(l[1]) / encodec_sr < max_dur
+            ]
     # # sequential processing
     n_flags = 0
     zero_words = 0
     for j, fn in enumerate(tqdm.tqdm(manifest)):
-        ipa_alignment_fn = os.path.join(target_dir, fn.replace(audio_ext, '.txt'))
-        ipa_alignment, flag = create_alignment(fn, trans_dir, align_dir, audio_ext, trans_ext, arpa_ext, text_tokenizer, use_prob, ipa_alignment_fn, prompt_dur=prompt_dur)
+        ipa_alignment_fn = os.path.join(target_dir, fn.replace(audio_ext, ".txt"))
+        ipa_alignment, flag = create_alignment(
+            fn,
+            trans_dir,
+            align_dir,
+            audio_ext,
+            trans_ext,
+            arpa_ext,
+            text_tokenizer,
+            use_prob,
+            ipa_alignment_fn,
+            prompt_dur=prompt_dur,
+        )
         n_flags += flag
         if not ipa_alignment:
             zero_words += 1
         # print(f"{n_flags} out of {j+1} utterances have mismatched words")
         # print(f"{zero_words} out of {j+1} utterances have zero words")
         if ipa_alignment:
-            with open(ipa_alignment_fn, 'w') as f:
+            with open(ipa_alignment_fn, "w") as f:
                 for item in ipa_alignment:
                     f.write(f"{item[0]}\t{item[1]}\t{item[2]}\n")
-    
+
     # # # # do the above using joblib parallisim
     # print(f"Processing {len(manifest)} utterances")
     # from joblib import Parallel, delayed
     # Parallel(n_jobs=32, verbose=2)(delayed(create_alignment)(fn, trans_dir, align_dir, audio_ext, trans_ext, arpa_ext, text_tokenizer, use_prob, os.path.join(target_dir, fn.replace(audio_ext, '.txt')), save=True) for fn in manifest)
-    
+
+
 if __name__ == "__main__":
     import fire
+
     fire.Fire(main)

@@ -16,6 +16,7 @@ import torchaudio
 import whisper
 import gradio as gr
 from argparse import Namespace
+from huggingface_hub import hf_hub_download
 
 # ---------------------------------------------------------------------
 # The following imports assume your local project structure:
@@ -25,7 +26,7 @@ from argparse import Namespace
 # Adjust if needed.
 # ---------------------------------------------------------------------
 from data.tokenizer import AudioTokenizer, TextTokenizer
-from models import voice_star
+from voicestar import voicestar as voice_star # legacy compatability TODO: change
 from inference_tts_utils import inference_one_sample
 
 
@@ -33,30 +34,15 @@ from inference_tts_utils import inference_one_sample
 # Utility Functions
 ############################################################
 
-def seed_everything(seed=1):
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
 
+from voicestar.utils import seed_everything, estimate_duration
 
-def estimate_duration(ref_audio_path, text):
-    """
-    Estimate duration based on seconds per character from the reference audio.
-    """
-    info = torchaudio.info(ref_audio_path)
-    audio_duration = info.num_frames / info.sample_rate
-    length_text = max(len(text), 1)
-    spc = audio_duration / length_text  # seconds per character
-    return len(text) * spc
 
 
 ############################################################
 # Main Inference Function
 ############################################################
+
 
 def run_inference(
     # User-adjustable parameters (no "# do not change" in snippet)
@@ -64,25 +50,24 @@ def run_inference(
     target_text="VoiceStar is a very interesting model, it's duration controllable and can extrapolate",
     model_name="VoiceStar_840M_40s",
     model_root="./pretrained",
-    reference_text=None,    # optional
-    target_duration=None,   # optional
-    top_k=10,               # can try 10, 20, 30, 40
+    reference_text=None,  # optional
+    target_duration=None,  # optional
+    top_k=10,  # can try 10, 20, 30, 40
     temperature=1,
-    kvcache=1,              # if OOM, set to 0
-    repeat_prompt=1,        # use higher to improve speaker similarity
-    stop_repetition=3,      # snippet says "will not use it" but not "do not change"
+    kvcache=1,  # if OOM, set to 0
+    repeat_prompt=1,  # use higher to improve speaker similarity
+    stop_repetition=3,  # snippet says "will not use it" but not "do not change"
     seed=1,
     output_dir="./generated_tts",
-
     # Non-adjustable parameters (based on snippet instructions)
-    codec_audio_sr=16000,   # do not change
-    codec_sr=50,            # do not change
-    top_p=1,                # do not change
-    min_p=1,                # do not change
-    silence_tokens=None,    # do not change it
-    multi_trial=None,       # do not change it
-    sample_batch_size=1,    # do not change
-    cut_off_sec=100,        # do not adjust
+    codec_audio_sr=16000,  # do not change
+    codec_sr=50,  # do not change
+    top_p=1,  # do not change
+    min_p=1,  # do not change
+    silence_tokens=None,  # do not change it
+    multi_trial=None,  # do not change it
+    sample_batch_size=1,  # do not change
+    cut_off_sec=100,  # do not adjust
 ):
     """
     Inference script for VoiceStar TTS.
@@ -92,24 +77,23 @@ def run_inference(
 
     # 2. Load model checkpoint
     torch.serialization.add_safe_globals([Namespace])
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    ckpt_fn = os.path.join(model_root, model_name + ".pth")
-    if not os.path.exists(ckpt_fn):
-        # use wget to download
-        print(f"[Info] Downloading {model_name} checkpoint...")
-        os.system(f"wget https://huggingface.co/pyp1/VoiceStar/resolve/main/{model_name}.pth?download=true -O {ckpt_fn}")
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu" # MPS support
+    ckpt_fn = hf_hub_download(repo_id="pyp1/VoiceStar", filename=f"{model_name}.pth")
+
     bundle = torch.load(ckpt_fn, map_location=device, weights_only=True)
     args = bundle["args"]
     phn2num = bundle["phn2num"]
 
-    model = voice_star.VoiceStar(args)
+    model = voice_star.VoiceStarModel(args)
     model.load_state_dict(bundle["model"])
     model.to(device)
     model.eval()
 
     # 3. If reference_text not provided, transcribe reference speech with Whisper
     if reference_text is None:
-        print("[Info] No reference_text provided. Transcribing reference_speech with Whisper (large-v3-turbo).")
+        print(
+            "[Info] No reference_text provided. Transcribing reference_speech with Whisper (large-v3-turbo)."
+        )
         wh_model = whisper.load_model("large-v3-turbo")
         result = wh_model.transcribe(reference_speech)
         prefix_transcript = result["text"]
@@ -120,7 +104,9 @@ def run_inference(
     # 4. If target_duration not provided, estimate from reference speech + target_text
     if target_duration is None:
         target_generation_length = estimate_duration(reference_speech, target_text)
-        print(f"[Info] target_duration not provided, estimated as {target_generation_length:.2f}s. Provide --target_duration if needed.")
+        print(
+            f"[Info] target_duration not provided, estimated as {target_generation_length:.2f}s. Provide --target_duration if needed."
+        )
     else:
         target_generation_length = float(target_duration)
 
@@ -164,9 +150,15 @@ def run_inference(
     # 8. Run inference
     print("[Info] Running TTS inference...")
     concated_audio, gen_audio = inference_one_sample(
-        model, args, phn2num, text_tokenizer, audio_tokenizer,
-        reference_speech, target_text,
-        device, decode_config,
+        model,
+        args,
+        phn2num,
+        text_tokenizer,
+        audio_tokenizer,
+        reference_speech,
+        target_text,
+        device,
+        decode_config,
         prompt_end_frame=prompt_end_frame,
         target_generation_length=target_generation_length,
         delay_pattern_increment=delay_pattern_increment,
@@ -192,6 +184,7 @@ def run_inference(
 # Transcription function
 ############################
 
+
 def transcribe_audio(reference_speech):
     """
     Transcribe uploaded reference audio with Whisper, return text.
@@ -209,9 +202,11 @@ def transcribe_audio(reference_speech):
     result = model.transcribe(audio_path)
     return result["text"]
 
+
 ############################
 # Gradio UI
 ############################
+
 
 def main():
     with gr.Blocks() as demo:
@@ -219,9 +214,7 @@ def main():
 
         with gr.Row():
             reference_speech_input = gr.Audio(
-                label="Reference Speech",
-                type="filepath",
-                elem_id="ref_speech"
+                label="Reference Speech", type="filepath", elem_id="ref_speech"
             )
             transcribe_button = gr.Button("Transcribe")
 
@@ -229,28 +222,25 @@ def main():
         reference_text_box = gr.Textbox(
             label="Reference Text (Editable)",
             placeholder="Click 'Transcribe' to auto-fill from reference speech...",
-            lines=2
+            lines=2,
         )
 
         target_text_box = gr.Textbox(
             label="Target Text",
             value="VoiceStar is a very interesting model, it's duration controllable and can extrapolate to unseen duration.",
-            lines=3
+            lines=3,
         )
 
-        model_name_box = gr.Textbox(
-            label="Model Name",
-            value="VoiceStar_840M_40s"
-        )
+        model_name_box = gr.Textbox(label="Model Name", value="VoiceStar_840M_40s")
 
         model_root_box = gr.Textbox(
             label="Model Root Directory",
-            value="/data1/scratch/pyp/BoostedVoiceEditor/runs"
+            value="/data1/scratch/pyp/BoostedVoiceEditor/runs",
         )
 
         reference_duration_box = gr.Textbox(
             label="Target Duration (Optional)",
-            placeholder="Leave empty for auto-estimate."
+            placeholder="Leave empty for auto-estimate.",
         )
 
         top_k_box = gr.Number(label="top_k", value=10)
@@ -271,7 +261,7 @@ def main():
             outputs=[reference_text_box],
         )
 
-        # 2) The actual TTS generation function. 
+        # 2) The actual TTS generation function.
         def gradio_inference(
             reference_speech,
             reference_text,
@@ -285,7 +275,7 @@ def main():
             repeat_prompt,
             stop_repetition,
             seed,
-            output_dir
+            output_dir,
         ):
             # Convert any empty strings to None for optional fields
             dur = float(target_duration) if target_duration else None
@@ -303,7 +293,7 @@ def main():
                 repeat_prompt=int(repeat_prompt),
                 stop_repetition=int(stop_repetition),
                 seed=int(seed),
-                output_dir=output_dir
+                output_dir=output_dir,
             )
             return out_path
 
@@ -323,12 +313,13 @@ def main():
                 repeat_prompt_box,
                 stop_repetition_box,
                 seed_box,
-                output_dir_box
+                output_dir_box,
             ],
             outputs=[output_audio],
         )
 
     demo.launch(server_name="0.0.0.0", server_port=7860, debug=True)
+
 
 if __name__ == "__main__":
     main()
