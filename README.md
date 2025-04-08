@@ -8,7 +8,7 @@
 ### Download model
 ```bash
 # under VoiceStar root dir
-wget -O ./pretrained/encodec_6f79c6a8.th https://huggingface.co/pyp1/VoiceCraft/resolve/main/encodec_4cb2048_giga.th?download=true
+wget -O ./pretrained/encodec_6f79c6a8.th https://huggingface.co/pyp1/Encodec_VoiceStar/resolve/main/encodec_4cb2048_giga.th?download=true
 wget -O ./pretrained/VoiceStar_840M_30s.pth https://huggingface.co/pyp1/VoiceStar/resolve/main/VoiceStar_840M_30s.pth?download=true
 wget -O ./pretrained/VoiceStar_840M_40s.pth https://huggingface.co/pyp1/VoiceStar/resolve/main/VoiceStar_840M_40s.pth?download=true
 ```
