@@ -1,5 +1,5 @@
 # VoiceStar: Robust, Duration-controllable TTS that can Extrapolate
-[![Paper](https://img.shields.io/badge/arXiv-2505.19462-brightgreen.svg?style=flat-square)](https://arxiv.org/pdf/2505.19462.pdf) [![YouTube demo](https://img.shields.io/youtube/views/eikybOi8iwU)](https://youtu.be/rTJeabxUxJ4)  [![Demo page](https://img.shields.io/badge/Audio_Samples-blue?logo=Github&style=flat-square)](https://jasonppy.github.io/VoiceCraft_web/)
+[![Paper](https://img.shields.io/badge/arXiv-2505.19462-brightgreen.svg?style=flat-square)](https://arxiv.org/pdf/2505.19462.pdf) [![YouTube demo](https://img.shields.io/youtube/views/rTJeabxUxJ4)](https://youtu.be/rTJeabxUxJ4)  [![Demo page](https://img.shields.io/badge/Audio_Samples-blue?logo=Github&style=flat-square)](https://jasonppy.github.io/VoiceStar_web/)
 
 ## 1. Env setup
 ### Download model
