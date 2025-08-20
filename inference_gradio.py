@@ -43,15 +43,15 @@ def seed_everything(seed=1):
     torch.backends.cudnn.deterministic = True
 
 
-def estimate_duration(ref_audio_path, text):
+def estimate_duration(ref_audio_path, ref_text, target_text):
     """
     Estimate duration based on seconds per character from the reference audio.
     """
     info = torchaudio.info(ref_audio_path)
     audio_duration = info.num_frames / info.sample_rate
-    length_text = max(len(text), 1)
+    length_text = max(len(ref_text), 1)
     spc = audio_duration / length_text  # seconds per character
-    return len(text) * spc
+    return len(target_text) * spc
 
 
 ############################################################
@@ -119,7 +119,7 @@ def run_inference(
 
     # 4. If target_duration not provided, estimate from reference speech + target_text
     if target_duration is None:
-        target_generation_length = estimate_duration(reference_speech, target_text)
+        target_generation_length = estimate_duration(reference_speech, prefix_transcript, target_text)
         print(f"[Info] target_duration not provided, estimated as {target_generation_length:.2f}s. Provide --target_duration if needed.")
     else:
         target_generation_length = float(target_duration)
